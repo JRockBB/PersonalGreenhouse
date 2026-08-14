@@ -711,4 +711,78 @@ analysis TestHerbSuccessionDemandRun
   model = TestHerbSuccessionDemand()
 end
 
+"""
+Complete separate NFT herb loop.
+
+A 50 L-class open reservoir supplies two parallel 2 m channels through a small
+variable-speed pump and inertial 16 mm-ID supply pipe. The channel bank returns
+to the same reservoir. A separate nutrient manager holds the lower herb
+concentration target, and staggered cilantro cohorts drive water/nutrient uptake.
+The loop is parameterized independently from the fruiting-crop Dutch buckets.
+"""
+component HerbNFTSystem
+  "Managed external tank flow [kg/s]"
+  # Site/weather and herb allocation
+  parameter Q_solar_peak::Real = 6500.0
+  parameter Q_year_amp::Real = 2000.0
+  parameter t_daylight::Time = 43200.0
+  parameter daylight_year_amp::Time = 9000.0
+  parameter herb_solar_fraction::Real = 0.04
+  # Tank and nutrient targets
+  parameter A_tank::Area = 0.125
+  parameter level_set::Length = 0.40
+  parameter concentration_set::Real = 0.0015
+  parameter stock_concentration::Real = 0.10
+  parameter crop_nutrient_ratio::Real = 8e-5
+  # Supply geometry
+  parameter rho::Density = 998.0
+  parameter diameter::Length = 0.016
+  final parameter area::Area = pi * diameter^2 / 4
+  final parameter perimeter::Length = pi * diameter
+
+  tank = OpenReservoir(A_tank=A_tank, level0=level_set, level_max=0.48,
+    h_outlet=0.05, p_atm=83000.0, rho=rho)
+  pump = RecirculationPump(dp_shutoff=29400.0, m_flow_free=0.035,
+    eta=0.22, P_idle=5.0, rho=rho)
+  supply = HydraulicComponents.Pipes.TubeBase(area=area, length=3.0,
+    perimeter=perimeter, shape_factor=64.0, head_factor=1.5,
+    add_inertia=true, m_flow0=0.0)
+  channels = NFTChannelBank(n_channels=2.0, sites_per_channel=7.0,
+    channel_length=2.0, channel_width=0.10, slope=0.025,
+    lift=1.5, target_flow_Lmin=0.50, dp_inlet_nom=3000.0,
+    depth_nom=0.004, depth_min=0.001, rho=rho)
+  manager = ReservoirManager(A_tank=A_tank, rho=rho,
+    level0=level_set, level_set=level_set, level_low=0.12,
+    concentration0=concentration_set, concentration_set=concentration_set,
+    stock_concentration=stock_concentration, crop_nutrient_ratio=crop_nutrient_ratio,
+    K_level=0.20, topoff_max=0.001, K_dose=0.020, dose_max=2e-5)
+  weather = DiurnalWeather(Q_solar_peak=Q_solar_peak, Q_year_amp=Q_year_amp,
+    t_daylight=t_daylight, daylight_year_amp=daylight_year_amp)
+  solar_herbs = BlockComponents.Math.Gain(k=herb_solar_fraction)
+  herbs = HerbSuccessionDemand(sites_per_channel=7.0)
+  speed = BlockComponents.Sources.Constant(k=1.0)
+  path medium::HydraulicComponents.Interfaces.AbstractMedium = HydraulicComponents.IsothermalCompressible(
+    bulk_modulus=2.2e9, let_gas=false, density=998.0, viscosity=0.001)
+relations
+  connect(tank.port, pump.port_a)
+  connect(pump.port_b, supply.port_a)
+  connect(supply.port_b, channels.port_a)
+  connect(channels.port_b, tank.port)
+  connect(speed.y, pump.command)
+  connect(weather.Q_solar, solar_herbs.u)
+  connect(solar_herbs.y, herbs.Q_solar_herbs)
+  connect(tank.level_out, manager.level)
+  connect(herbs.water_uptake, manager.crop_water_uptake)
+  connect(manager.m_flow_net, tank.m_flow_external)
+  continuity(medium, tank.port.medium)
+end
+
+analysis HerbNFTAnnualTest
+  # Fast supply-pipe/channel dynamics coupled to annual succession and nutrient
+  # balances require the implicit automatic solver.
+  extends TransientAnalysis(stop=31536000.0, alg=ODEAlg.AutoImplicit(), abstol=1e-6, reltol=1e-6)
+  model = HerbNFTSystem()
+end
+
+
 
