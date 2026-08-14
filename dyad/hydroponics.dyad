@@ -1,0 +1,714 @@
+"""
+Open, vented hydroponic nutrient reservoir.
+
+This component supplies hydrostatic pressure at its outlet and stores liquid as
+a free-surface level state. Positive connector `m_flow` follows the hydraulic
+stdlib convention (flow into the component): suction therefore lowers level,
+while a positive external top-off/return signal raises it.
+
+The pressure datum is ambient (`p_atm`); the outlet is `h_outlet` above the tank
+bottom. The `head_eps` regularisation prevents a nonphysical negative pressure
+head if the level is drawn slightly below the outlet during a limiting test.
+"""
+component OpenReservoir
+  "Hydraulic suction/return port"
+  port = HydraulicComponents.Interfaces.Port()
+  "External return/top-off mass flow into tank [kg/s]"
+  m_flow_external = RealInput()
+  "Liquid level [m]"
+  level_out = RealOutput()
+
+  "Tank horizontal cross-sectional area [m2]"
+  parameter A_tank::Area = 0.25
+  "Initial liquid level [m]"
+  parameter level0::Length = 0.40
+  "Maximum usable liquid level [m]"
+  parameter level_max::Length = 0.48
+  "Outlet elevation above tank bottom [m]"
+  parameter h_outlet::Length = 0.05
+  "Ambient pressure [Pa]"
+  parameter p_atm::Pressure = 83000.0
+  "Liquid density [kg/m3]"
+  parameter rho::Density = 998.0
+  "Gravity [m/s2]"
+  parameter g::Acceleration = 9.80665
+  "Smooth positive-head regularisation [m]"
+  parameter head_eps::Length = 1e-5
+
+  variable level::Length
+  variable head::Length
+  variable volume::Volume
+  variable mass::Mass
+relations
+  initial level = level0
+  # smooth max(level-h_outlet, 0), robust around an empty outlet
+  head = 0.5 * ((level - h_outlet) + sqrt((level - h_outlet)^2 + head_eps^2))
+  port.p = p_atm + rho * g * head
+  volume = A_tank * level
+  mass = rho * volume
+  der(mass) = port.m_flow + m_flow_external
+  level_out = level
+end
+
+"""
+Simple prescribed-flow test sink.
+
+Sets only the sink port's flow (positive into the sink), matching the stdlib
+connector sign convention. The connected reservoir receives the equal and
+opposite (negative) flow, so its level falls.
+"""
+component PrescribedFlowSink
+  port = HydraulicComponents.Interfaces.Port()
+  m_set = RealInput()
+relations
+  port.m_flow = m_set
+end
+
+"""
+Reservoir validation harness.
+
+A 0.25 m2 tank starts at 0.40 m. At t=100 s a 0.10 kg/s withdrawal begins;
+at t=600 s an equal top-off starts. Expected level loss over the intervening
+500 s is 50/(998*0.25)=0.2004 m, after which level should remain constant.
+"""
+component TestOpenReservoir
+  tank = OpenReservoir(A_tank=0.25, level0=0.40, level_max=0.48,
+    h_outlet=0.05, p_atm=83000.0, rho=998.0)
+  sink = PrescribedFlowSink()
+  withdrawal = BlockComponents.Sources.Step(height=0.10, start_time=100.0)
+  topoff = BlockComponents.Sources.Step(height=0.10, start_time=600.0)
+  path medium::HydraulicComponents.Interfaces.AbstractMedium = HydraulicComponents.IsothermalCompressible(
+    bulk_modulus=2.2e9, let_gas=false, density=998.0, viscosity=0.001)
+relations
+  connect(tank.port, sink.port)
+  connect(withdrawal.y, sink.m_set)
+  connect(topoff.y, tank.m_flow_external)
+  continuity(medium, tank.port.medium)
+end
+
+analysis TestOpenReservoirRun
+  extends TransientAnalysis(stop=1000.0, abstol=1e-8, reltol=1e-8)
+  model = TestOpenReservoir()
+end
+
+
+"""
+Variable-speed centrifugal recirculation pump.
+
+The `port_a` connector is suction and `port_b` is discharge. Positive `m_flow`
+enters at `port_a`, consistent with the HydraulicComponents connector. The pump
+curve follows the affinity laws:
+
+  pressure rise = speed^2*dp_shutoff - K*m_flow*abs(m_flow)
+
+where K is set by the full-speed free-flow point. A large reverse-flow factor
+represents the pump/check-valve resistance when discharge pressure exceeds pump
+head. The adjacent supply pipe provides the flow inertia during starts/stops.
+Electrical power is hydraulic power divided by overall efficiency plus a small
+speed-cubed no-load loss.
+"""
+component RecirculationPump
+  "Suction port (positive mass flow enters pump)"
+  port_a = HydraulicComponents.Interfaces.Port()
+  "Discharge port (mass flow leaves pump)"
+  port_b = HydraulicComponents.Interfaces.Port()
+  "Commanded fractional speed [0,1]"
+  command = RealInput()
+  "Delivered mass flow [kg/s]"
+  flow_out = RealOutput()
+  "Electrical input power [W]"
+  power_out = RealOutput()
+
+  "Full-speed shutoff pressure rise [Pa]"
+  parameter dp_shutoff::Pressure = 39200.0
+  "Full-speed free-flow mass rate [kg/s]"
+  parameter m_flow_free::MassFlowRate = 0.040
+  "Overall wire-to-water efficiency"
+  parameter eta::Real = 0.25
+  "Full-speed no-load electrical loss [W]"
+  parameter P_idle::Real = 8.0
+  "Liquid density used for power conversion [kg/m3]"
+  parameter rho::Density = 998.0
+  "Reverse-flow resistance multiplier (check-valve proxy)"
+  parameter reverse_factor::Real = 10000.0
+  "Flow smoothing scale [kg/s]"
+  parameter m_eps::MassFlowRate = 1e-7
+
+  final parameter K_curve::Real = dp_shutoff / (m_flow_free^2)
+  variable speed::Real
+  variable m_flow::MassFlowRate
+  variable flow_term::Real
+  variable dp_rise::Pressure
+  variable P_hyd::Real
+  variable P_elec::Real
+relations
+  continuity(port_a.medium, port_b.medium)
+  port_a.m_flow + port_b.m_flow = 0
+  m_flow = port_a.m_flow
+  speed = ifelse(command < 0, 0.0, ifelse(command > 1, 1.0, command))
+  flow_term = ifelse(m_flow >= 0,
+    m_flow * sqrt(m_flow^2 + m_eps^2),
+    reverse_factor * m_flow * sqrt(m_flow^2 + m_eps^2))
+  dp_rise = speed^2 * dp_shutoff - K_curve * flow_term
+  port_b.p - port_a.p = dp_rise
+  P_hyd = ifelse(m_flow > 0, dp_rise * m_flow / rho, 0.0)
+  P_elec = P_hyd / eta + P_idle * speed^3
+  flow_out = m_flow
+  power_out = P_elec
+end
+
+"""
+Pump operating-point validation with a real inertial supply pipe.
+
+A submerged pump draws from the open reservoir and discharges 2.5 m above the
+free-surface pressure through 5 m of 12 mm-ID tubing. At full speed the expected
+steady point is near 0.024 kg/s (about 1.45 L/min): the intersection of the
+quadratic pump curve with static lift plus Darcy-Weisbach pipe loss. The pipe's
+`add_inertia=true` supplies the physical flow state during startup.
+"""
+component TestRecirculationPump
+  parameter rho::Density = 998.0
+  parameter g::Acceleration = 9.80665
+  parameter lift::Length = 2.5
+  parameter diameter::Length = 0.012
+  final parameter area::Area = pi * diameter^2 / 4
+  final parameter perimeter::Length = pi * diameter
+
+  tank = OpenReservoir(A_tank=0.50, level0=0.40, h_outlet=0.05,
+    p_atm=83000.0, rho=rho)
+  pump = RecirculationPump(dp_shutoff=39200.0, m_flow_free=0.040,
+    eta=0.25, P_idle=8.0, rho=rho)
+  pipe = HydraulicComponents.Pipes.TubeBase(area=area, length=5.0,
+    perimeter=perimeter, shape_factor=64.0, head_factor=2.0,
+    add_inertia=true, m_flow0=0.0)
+  discharge = HydraulicComponents.Sources.BoundaryPressure()
+  speed = BlockComponents.Sources.Constant(k=1.0)
+  p_discharge = BlockComponents.Sources.Constant(k=83000.0 + rho * g * lift)
+  no_return = BlockComponents.Sources.Constant(k=0.0)
+  path medium::HydraulicComponents.Interfaces.AbstractMedium = HydraulicComponents.IsothermalCompressible(
+    bulk_modulus=2.2e9, let_gas=false, density=998.0, viscosity=0.001)
+relations
+  connect(tank.port, pump.port_a)
+  connect(pump.port_b, pipe.port_a)
+  connect(pipe.port_b, discharge.port)
+  connect(speed.y, pump.command)
+  connect(p_discharge.y, discharge.p)
+  connect(no_return.y, tank.m_flow_external)
+  continuity(medium, tank.port.medium)
+end
+
+analysis TestRecirculationPumpRun
+  extends TransientAnalysis(stop=30.0, abstol=1e-8, reltol=1e-8)
+  model = TestRecirculationPump()
+end
+
+"""
+Equivalent hydraulic model of a parallel Dutch-bucket grow bank.
+
+`n_emitters` identical low-pressure drippers operate in parallel. The pressure
+drop is the static lift to the bucket manifold plus a quadratic emitter loss,
+scaled from each emitter's nominal pressure and flow. The outlet represents the
+open gravity drain returning nutrient solution to the reservoir; mass is
+conserved through the bank. Outputs report total flow, per-plant delivery and
+the fraction of the target irrigation rate.
+"""
+component DutchBucketBank
+  "Pressurised supply manifold"
+  port_a = HydraulicComponents.Interfaces.Port()
+  "Gravity return to reservoir"
+  port_b = HydraulicComponents.Interfaces.Port()
+  "Total delivered mass flow [kg/s]"
+  total_flow = RealOutput()
+  "Average emitter delivery [L/h per plant]"
+  flow_per_plant = RealOutput()
+  "Delivered / target flow ratio"
+  delivery_ratio = RealOutput()
+  "True when average flow is below the target"
+  under_supply = BooleanOutput()
+
+  "Number of buckets / emitters"
+  parameter n_emitters::Real = 12.0
+  "Vertical lift from reservoir free surface to emitters [m]"
+  parameter lift::Length = 2.5
+  "Nominal emitter flow [L/h]"
+  parameter q_emitter_nom_Lph::Real = 2.0
+  "Emitter pressure drop at nominal flow [Pa]"
+  parameter dp_emitter_nom::Pressure = 10000.0
+  "Target irrigation delivery [L/h per plant]"
+  parameter q_target_Lph::Real = 2.0
+  "Liquid density [kg/m3]"
+  parameter rho::Density = 998.0
+  "Gravity [m/s2]"
+  parameter g::Acceleration = 9.80665
+  "Reverse-flow resistance multiplier"
+  parameter reverse_factor::Real = 10000.0
+  "Flow smoothing scale [kg/s]"
+  parameter m_eps::MassFlowRate = 1e-8
+
+  final parameter q_emitter_nom::Real = q_emitter_nom_Lph / 3.6e6
+  final parameter m_total_nom::Real = rho * n_emitters * q_emitter_nom
+  final parameter K_bank::Real = dp_emitter_nom / (m_total_nom^2)
+  variable m_flow::MassFlowRate
+  variable flow_term::Real
+  variable dp_static::Pressure
+  variable dp_emitters::Pressure
+  variable dp_total::Pressure
+relations
+  continuity(port_a.medium, port_b.medium)
+  port_a.m_flow + port_b.m_flow = 0
+  m_flow = port_a.m_flow
+  flow_term = ifelse(m_flow >= 0,
+    m_flow * sqrt(m_flow^2 + m_eps^2),
+    reverse_factor * m_flow * sqrt(m_flow^2 + m_eps^2))
+  dp_static = rho * g * lift
+  dp_emitters = K_bank * flow_term
+  dp_total = dp_static + dp_emitters
+  port_a.p - port_b.p = dp_total
+  total_flow = m_flow
+  flow_per_plant = m_flow * 3.6e6 / (rho * n_emitters)
+  delivery_ratio = flow_per_plant / q_target_Lph
+  under_supply = delivery_ratio < 1.0
+end
+
+"""
+Complete recirculating hydraulic loop used to validate the grow bank.
+
+Reservoir -> variable-speed pump -> inertial supply pipe -> 12 parallel Dutch
+buckets -> gravity return to the same reservoir node. The test checks the pump
+curve, pipe friction, static lift and emitter restriction at their common
+operating point, as well as zero net reservoir flow in a closed recirculating
+loop.
+"""
+component TestDutchBucketLoop
+  "Managed external reservoir flow (top-off + dose - crop uptake) [kg/s]"
+  m_flow_external = RealInput()
+  parameter rho::Density = 998.0
+  parameter diameter::Length = 0.012
+  final parameter area::Area = pi * diameter^2 / 4
+  final parameter perimeter::Length = pi * diameter
+
+  tank = OpenReservoir(A_tank=0.25, level0=0.40, h_outlet=0.05,
+    p_atm=83000.0, rho=rho)
+  pump = RecirculationPump(dp_shutoff=39200.0, m_flow_free=0.040,
+    eta=0.25, P_idle=8.0, rho=rho)
+  supply = HydraulicComponents.Pipes.TubeBase(area=area, length=5.0,
+    perimeter=perimeter, shape_factor=64.0, head_factor=2.0,
+    add_inertia=true, m_flow0=0.0)
+  bank = DutchBucketBank(n_emitters=12.0, lift=2.5,
+    q_emitter_nom_Lph=2.0, dp_emitter_nom=10000.0,
+    q_target_Lph=2.0, rho=rho)
+  speed = BlockComponents.Sources.Constant(k=1.0)
+  path medium::HydraulicComponents.Interfaces.AbstractMedium = HydraulicComponents.IsothermalCompressible(
+    bulk_modulus=2.2e9, let_gas=false, density=998.0, viscosity=0.001)
+relations
+  connect(tank.port, pump.port_a)
+  connect(pump.port_b, supply.port_a)
+  connect(supply.port_b, bank.port_a)
+  connect(bank.port_b, tank.port)
+  connect(speed.y, pump.command)
+  connect(m_flow_external, tank.m_flow_external)
+  continuity(medium, tank.port.medium)
+end
+
+component TestDutchBucketLoopNoDemand
+  loop = TestDutchBucketLoop()
+  zero = BlockComponents.Sources.Constant(k=0.0)
+relations
+  connect(zero.y, loop.m_flow_external)
+end
+
+analysis TestDutchBucketLoopRun
+  # The loop has one smooth pipe-inertia state; explicit integration avoids the
+  # default auto-solver's unnecessary stiff-method compilation overhead.
+  extends TransientAnalysis(stop=10.0, alg=ODEAlg.Tsit5(), abstol=1e-7, reltol=1e-7)
+  model = TestDutchBucketLoopNoDemand()
+end
+
+
+"""
+Automatic reservoir water and nutrient-concentration manager.
+
+The manager receives reservoir level and crop water uptake. It meters pure
+make-up water to restore `level_set`, and meters concentrated nutrient stock to
+restore `concentration_set`. Its net liquid flow is connected to the open tank's
+external-flow input. Nutrient mass is an independent conserved state; crop
+nutrient uptake is represented by `crop_nutrient_ratio` kg nutrient per kg water
+transpired. Concentration is a mass fraction (kg nutrient/kg solution), used as
+a parameterizable proxy for EC.
+"""
+component ReservoirManager
+  "Measured reservoir level [m]"
+  level = RealInput()
+  "Crop water uptake from reservoir [kg/s]"
+  crop_water_uptake = RealInput()
+  "Net liquid flow into reservoir [kg/s]"
+  m_flow_net = RealOutput()
+  "Pure-water top-off flow [kg/s]"
+  topoff_flow = RealOutput()
+  "Concentrated nutrient-solution dosing flow [kg/s]"
+  dose_flow = RealOutput()
+  "Reservoir nutrient mass fraction [kg/kg]"
+  concentration = RealOutput()
+  "True when level is below the low-level threshold"
+  low_level = BooleanOutput()
+
+  "Tank horizontal area [m2]"
+  parameter A_tank::Area = 0.25
+  "Liquid density [kg/m3]"
+  parameter rho::Density = 998.0
+  "Initial reservoir level [m]"
+  parameter level0::Length = 0.40
+  "Controlled reservoir level [m]"
+  parameter level_set::Length = 0.40
+  "Low-level alarm threshold [m]"
+  parameter level_low::Length = 0.15
+  "Minimum level used in concentration denominator [m]"
+  parameter level_floor::Length = 0.01
+  "Initial nutrient mass fraction [kg/kg]"
+  parameter concentration0::Real = 0.002
+  "Target nutrient mass fraction [kg/kg]"
+  parameter concentration_set::Real = 0.002
+  "Nutrient mass fraction in dosing stock [kg/kg]"
+  parameter stock_concentration::Real = 0.10
+  "Crop nutrient uptake per water uptake [kg/kg]"
+  parameter crop_nutrient_ratio::Real = 1e-4
+  "Level-control gain [(kg/s)/m]"
+  parameter K_level::Real = 0.20
+  "Maximum pure-water top-off [kg/s]"
+  parameter topoff_max::MassFlowRate = 0.003
+  "Concentration-control gain [(kg/s)/(kg/kg)]"
+  parameter K_dose::Real = 0.020
+  "Maximum dosing-solution flow [kg/s]"
+  parameter dose_max::MassFlowRate = 5e-5
+
+  variable nutrient_mass::Mass
+  variable liquid_mass::Mass
+  variable effective_level::Length
+  variable level_error::Real
+  variable concentration_error::Real
+  variable m_topoff::MassFlowRate
+  variable m_dose::MassFlowRate
+  variable m_nutrient_crop::MassFlowRate
+relations
+  initial nutrient_mass = concentration0 * rho * A_tank * level0
+  effective_level = ifelse(level > level_floor, level, level_floor)
+  liquid_mass = rho * A_tank * effective_level
+  concentration = nutrient_mass / liquid_mass
+  level_error = level_set - level
+  concentration_error = concentration_set - concentration
+  m_nutrient_crop = crop_nutrient_ratio * crop_water_uptake
+  # uptake feed-forward removes steady droop; proportional terms reject
+  # initialization/model mismatch and restore the exact targets.
+  m_dose = ifelse(m_nutrient_crop / stock_concentration + K_dose * concentration_error <= 0, 0.0,
+    ifelse(m_nutrient_crop / stock_concentration + K_dose * concentration_error < dose_max,
+      m_nutrient_crop / stock_concentration + K_dose * concentration_error, dose_max))
+  m_topoff = ifelse(crop_water_uptake - m_dose + K_level * level_error <= 0, 0.0,
+    ifelse(crop_water_uptake - m_dose + K_level * level_error < topoff_max,
+      crop_water_uptake - m_dose + K_level * level_error, topoff_max))
+  der(nutrient_mass) = stock_concentration * m_dose - m_nutrient_crop
+  m_flow_net = m_topoff + m_dose - crop_water_uptake
+  topoff_flow = m_topoff
+  dose_flow = m_dose
+  low_level = level < level_low
+end
+
+"""
+Standalone reservoir-management validation.
+
+At t=100 s crops begin taking 0.001 kg/s (86.4 L/day). The water controller
+should settle with top-off plus stock solution equal to crop uptake. The
+nutrient controller should settle where stock nutrient input equals crop
+nutrient uptake. Tank level and concentration should remain near their targets,
+and the low-level alarm should remain false.
+"""
+component TestReservoirManager
+  tank = OpenReservoir(A_tank=0.25, level0=0.40, level_max=0.48,
+    h_outlet=0.05, p_atm=83000.0, rho=998.0)
+  manager = ReservoirManager(A_tank=0.25, rho=998.0,
+    level0=0.40, level_set=0.40, level_low=0.15,
+    concentration0=0.002, concentration_set=0.002,
+    stock_concentration=0.10, crop_nutrient_ratio=1e-4,
+    K_level=0.20, topoff_max=0.003, K_dose=0.020, dose_max=5e-5)
+  uptake = BlockComponents.Sources.Step(height=0.001, start_time=100.0)
+  closed_port = PrescribedFlowSink()
+  zero_flow = BlockComponents.Sources.Constant(k=0.0)
+  path medium::HydraulicComponents.Interfaces.AbstractMedium = HydraulicComponents.IsothermalCompressible(
+    bulk_modulus=2.2e9, let_gas=false, density=998.0, viscosity=0.001)
+relations
+  connect(tank.port, closed_port.port)
+  connect(zero_flow.y, closed_port.m_set)
+  connect(tank.level_out, manager.level)
+  connect(uptake.y, manager.crop_water_uptake)
+  connect(manager.m_flow_net, tank.m_flow_external)
+  continuity(medium, tank.port.medium)
+end
+
+analysis TestReservoirManagerRun
+  extends TransientAnalysis(stop=172800.0, alg=ODEAlg.Tsit5(), abstol=1e-8, reltol=1e-8)
+  model = TestReservoirManager()
+end
+
+"""
+Transpiration-linked crop water demand for the annual hydroponic system.
+
+`Q_solar_shaded` drives the same latent-water relationship used by the climate
+model (`beta_transp*Q/h_fg`), with a parameterized baseline crop demand to
+represent respiration/root-zone evaporation outside strong sun. The output is
+water withdrawn from the nutrient reservoir.
+"""
+component CropWaterDemand
+  "Shaded natural solar reaching plants [W]"
+  Q_solar_shaded = RealInput()
+  "Crop water withdrawal [kg/s]"
+  water_uptake = RealOutput()
+  "Fraction of shaded solar used as latent transpiration"
+  parameter beta_transp::Real = 0.20
+  "Latent heat of vaporisation [J/kg]"
+  parameter h_fg::Real = 2.45e6
+  "Baseline water demand [kg/s]"
+  parameter baseline_uptake::MassFlowRate = 5e-5
+relations
+  water_uptake = baseline_uptake + beta_transp * Q_solar_shaded / h_fg
+end
+
+"""
+Final Dutch-bucket hydroponic subsystem.
+
+The hydraulic loop recirculates continuously through 12 buckets. Crop water
+uptake is tied to the greenhouse's synthesized shaded solar signal; the
+reservoir manager meters pure top-off and concentrated nutrient stock to hold
+level and concentration targets. Weather parameters are exposed for relocation,
+and hydraulic geometry/pump/crop controls remain exposed in their components.
+"""
+component DutchBucketSystem
+  # Site/weather inputs used for crop-water demand
+  parameter Q_solar_peak::Real = 6500.0
+  parameter Q_year_amp::Real = 2000.0
+  parameter t_daylight::Time = 43200.0
+  parameter daylight_year_amp::Time = 9000.0
+  parameter beta_transp::Real = 0.20
+  parameter baseline_uptake::MassFlowRate = 5e-5
+  # Reservoir management
+  parameter concentration_set::Real = 0.002
+  parameter stock_concentration::Real = 0.10
+  parameter crop_nutrient_ratio::Real = 1e-4
+
+  # hydraulic recirculation loop
+  loop = TestDutchBucketLoop()
+  weather = DiurnalWeather(Q_solar_peak=Q_solar_peak, Q_year_amp=Q_year_amp,
+    t_daylight=t_daylight, daylight_year_amp=daylight_year_amp)
+  crop = CropWaterDemand(beta_transp=beta_transp, baseline_uptake=baseline_uptake)
+  manager = ReservoirManager(A_tank=0.25, rho=998.0,
+    level0=0.40, level_set=0.40, level_low=0.15,
+    concentration0=concentration_set, concentration_set=concentration_set,
+    stock_concentration=stock_concentration, crop_nutrient_ratio=crop_nutrient_ratio,
+    K_level=0.20, topoff_max=0.003, K_dose=0.020, dose_max=5e-5)
+relations
+  connect(weather.Q_solar, crop.Q_solar_shaded)
+  connect(loop.tank.level_out, manager.level)
+  connect(crop.water_uptake, manager.crop_water_uptake)
+  # Override the loop's zero external flow with managed top-off/dose/uptake.
+  connect(manager.m_flow_net, loop.tank.m_flow_external)
+end
+
+analysis DutchBucketAnnualTest
+  # Annual model couples sub-second pipe inertia to seasonal reservoir balances;
+  # the implicit automatic solver spans these separated timescales efficiently.
+  extends TransientAnalysis(stop=31536000.0, alg=ODEAlg.AutoImplicit(), abstol=1e-6, reltol=1e-6)
+  model = DutchBucketSystem()
+end
+
+
+
+"""
+Parallel NFT channel bank with dynamic liquid holdup and gravity return.
+
+The pressurised inlet feeds `n_channels` identical sloped channels. Fluid first
+accumulates in a thin film/return plenum (`mass_hold`); gravity drainage returns
+it through `port_b`. The state captures startup fill, shutdown drain-down and
+dry-channel conditions. Inlet flow is pressure-driven by a quadratic manifold
+restriction; outlet flow increases with the square root of liquid depth. The
+outlet is an open gravity return, so the channel bank itself conserves mass.
+"""
+component NFTChannelBank
+  "Pressurised supply manifold"
+  port_a = HydraulicComponents.Interfaces.Port()
+  "Open gravity return"
+  port_b = HydraulicComponents.Interfaces.Port()
+  "Total inlet flow [kg/s]"
+  total_flow = RealOutput()
+  "Average inlet flow per channel [L/min]"
+  flow_per_channel = RealOutput()
+  "Average liquid depth in channel [m]"
+  film_depth = RealOutput()
+  "True when channel inlet flow is below target"
+  low_flow = BooleanOutput()
+  "True when film depth is below minimum wetting depth"
+  dry_channel = BooleanOutput()
+
+  "Number of parallel NFT channels"
+  parameter n_channels::Real = 2.0
+  "Plant sites per channel"
+  parameter sites_per_channel::Real = 7.0
+  "Length of each channel [m]"
+  parameter channel_length::Length = 2.0
+  "Internal wetted width of each channel [m]"
+  parameter channel_width::Length = 0.10
+  "Channel slope (rise/run)"
+  parameter slope::Real = 0.025
+  "Static lift from reservoir to inlet [m]"
+  parameter lift::Length = 1.5
+  "Target inlet flow per channel [L/min]"
+  parameter target_flow_Lmin::Real = 0.50
+  "Inlet restriction pressure at target total flow [Pa]"
+  parameter dp_inlet_nom::Pressure = 3000.0
+  "Nominal operating film depth [m]"
+  parameter depth_nom::Length = 0.004
+  "Minimum wetting depth for dry alarm [m]"
+  parameter depth_min::Length = 0.001
+  "Liquid density [kg/m3]"
+  parameter rho::Density = 998.0
+  "Gravity [m/s2]"
+  parameter g::Acceleration = 9.80665
+  "Reverse-flow resistance multiplier"
+  parameter reverse_factor::Real = 10000.0
+  "Regularisation for flow/depth roots"
+  parameter eps::Real = 1e-10
+
+  final parameter target_total_m::Real = rho * n_channels * target_flow_Lmin / 60000.0
+  final parameter K_inlet::Real = dp_inlet_nom / (target_total_m^2)
+  final parameter plan_area::Real = n_channels * channel_width * channel_length
+  final parameter mass_nom::Real = rho * plan_area * depth_nom
+  final parameter K_drain::Real = target_total_m / sqrt(depth_nom)
+  variable mass_hold::Mass
+  variable depth::Length
+  variable m_in::MassFlowRate
+  variable m_out::MassFlowRate
+  variable dp_static::Pressure
+  variable dp_available::Pressure
+relations
+  continuity(port_a.medium, port_b.medium)
+  initial mass_hold = mass_nom
+  depth = mass_hold / (rho * plan_area)
+  m_in = port_a.m_flow
+  m_out = -port_b.m_flow
+  dp_static = rho * g * lift
+  dp_available = port_a.p - port_b.p - dp_static
+  # Explicit inversion of the quadratic inlet restriction avoids a nearly-flat
+  # algebraic flow solve at zero pressure. The inlet check valve blocks reverse flow.
+  m_in = ifelse(dp_available > 0, sqrt(dp_available / K_inlet), 0.0)
+  # Gravity drainage goes exactly to zero at an empty channel, preventing the
+  # dynamic holdup from being integrated below zero after shutdown.
+  m_out = ifelse(depth > 0, K_drain * sqrt(depth), 0.0)
+  der(mass_hold) = m_in - m_out
+  total_flow = m_in
+  flow_per_channel = m_in * 60000.0 / (rho * n_channels)
+  film_depth = depth
+  low_flow = flow_per_channel < target_flow_Lmin
+  dry_channel = depth < depth_min
+end
+
+"""
+Standalone NFT channel-bank transient validation.
+
+A pressure boundary supplies exactly the static lift plus nominal restriction,
+which should produce 0.5 L/min per channel at steady state. At t=600 s the
+supply pressure is removed; inlet flow falls while the dynamic channel holdup
+drains toward zero and triggers the dry-channel alarm.
+"""
+component TestNFTChannelBank
+  parameter rho::Density = 998.0
+  parameter g::Acceleration = 9.80665
+  inlet = HydraulicComponents.Sources.BoundaryPressure()
+  outlet = HydraulicComponents.Sources.BoundaryPressure()
+  bank = NFTChannelBank(n_channels=2.0, sites_per_channel=7.0,
+    channel_length=2.0, channel_width=0.10, slope=0.025,
+    lift=1.5, target_flow_Lmin=0.50, dp_inlet_nom=3000.0,
+    depth_nom=0.004, depth_min=0.001, rho=rho)
+  p_in = BlockComponents.Sources.Step(
+    offset=83000.0 + rho*g*1.5 + 3000.0,
+    height=-(rho*g*1.5 + 3000.0), start_time=600.0)
+  p_out = BlockComponents.Sources.Constant(k=83000.0)
+  path medium::HydraulicComponents.Interfaces.AbstractMedium = HydraulicComponents.IsothermalCompressible(
+    bulk_modulus=2.2e9, let_gas=false, density=998.0, viscosity=0.001)
+relations
+  connect(inlet.port, bank.port_a)
+  connect(bank.port_b, outlet.port)
+  connect(p_in.y, inlet.p)
+  connect(p_out.y, outlet.p)
+  continuity(medium, bank.port_a.medium)
+end
+
+analysis TestNFTChannelBankRun
+  extends TransientAnalysis(stop=1200.0, alg=ODEAlg.Tsit5(), abstol=1e-8, reltol=1e-8)
+  model = TestNFTChannelBank()
+end
+
+"""
+Cilantro/herb water-demand model with two staggered NFT cohorts.
+
+Each NFT channel is treated as one planting cohort. A cohort is occupied for
+`grow_time` of every `cycle_time`, then empty for harvest, cleaning and
+replanting. The second cohort is phase shifted so all sites are not harvested at
+once. Water demand combines an occupied-site baseline with solar-driven latent
+transpiration. `Q_solar_herbs` is the shortwave solar allocated to the herb area,
+not the whole greenhouse.
+"""
+component HerbSuccessionDemand
+  "Natural solar allocated to herb canopy [W]"
+  Q_solar_herbs = RealInput()
+  "Herb water withdrawal [kg/s]"
+  water_uptake = RealOutput()
+  "Number of occupied plant sites"
+  active_sites = RealOutput()
+  "Fraction of NFT sites occupied"
+  occupancy = RealOutput()
+
+  "Sites in each of two channel cohorts"
+  parameter sites_per_channel::Real = 7.0
+  "Planting-to-harvest cycle [s] (30 days)"
+  parameter cycle_time::Time = 2592000.0
+  "Occupied/growing duration [s] (28 days)"
+  parameter grow_time::Time = 2419200.0
+  "Second-cohort phase offset [s] (15 days)"
+  parameter phase_offset::Time = 1296000.0
+  "Baseline water use per occupied site [kg/s]"
+  parameter baseline_per_site::MassFlowRate = 8e-7
+  "Fraction of herb solar converted to latent transpiration"
+  parameter beta_transp::Real = 0.10
+  "Latent heat of vaporisation [J/kg]"
+  parameter h_fg::Real = 2.45e6
+
+  variable cohort1::Real
+  variable cohort2::Real
+  variable n_active::Real
+relations
+  cohort1 = ifelse(mod(time, cycle_time) < grow_time, 1.0, 0.0)
+  cohort2 = ifelse(mod(time + phase_offset, cycle_time) < grow_time, 1.0, 0.0)
+  n_active = sites_per_channel * (cohort1 + cohort2)
+  active_sites = n_active
+  occupancy = n_active / (2.0 * sites_per_channel)
+  water_uptake = n_active * baseline_per_site + occupancy * beta_transp * Q_solar_herbs / h_fg
+end
+
+"""
+Succession-demand validation over one 30-day cycle.
+
+With two 7-site cohorts, 28 occupied days and a 15-day phase offset, the system
+has 14 active sites most of the month and 7 sites during each two-day harvest /
+cleaning interval. A constant 300 W herb solar input verifies the water-demand
+calculation at full and half occupancy.
+"""
+component TestHerbSuccessionDemand
+  herbs = HerbSuccessionDemand()
+  solar = BlockComponents.Sources.Constant(k=300.0)
+relations
+  connect(solar.y, herbs.Q_solar_herbs)
+end
+
+analysis TestHerbSuccessionDemandRun
+  extends TransientAnalysis(stop=2592000.0, alg=ODEAlg.Tsit5(), abstol=1e-8, reltol=1e-8)
+  model = TestHerbSuccessionDemand()
+end
+
+

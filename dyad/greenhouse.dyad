@@ -1,0 +1,350 @@
+"""
+Greenhouse passive thermal envelope (increment 1).
+
+Lumped single-zone thermal model of a backyard greenhouse for Denver:
+  * `air`   - greenhouse air thermal mass (small, fast).
+  * `mass`  - passive thermal mass (water barrels + soil/structure), coupled to
+              the air by convection.
+  * `envelope` - conduction through glazing plus air infiltration, lumped into a
+              single conductance to outdoor air.
+  * `radiation` - net long-wave radiative loss to the (cold, clear) night sky.
+
+Boundary conditions are held fixed here to represent a Denver winter design
+night with no heating, so the passive cool-down can be validated. Solar gain,
+heater and controller are added in later increments.
+
+Temperatures are in Kelvin.
+"""
+component GreenhouseNight
+  # ---- Thermal capacitances -------------------------------------------------
+  "Greenhouse air heat capacity (rho*cp*Volume ~ 1200 J/m3K * 32 m3)"
+  parameter C_air::HeatCapacity = 3.84e4
+  "Passive thermal mass heat capacity (~800 L water + soil/structure)"
+  parameter C_mass::HeatCapacity = 3.5e6
+
+  # ---- Heat transfer conductances ------------------------------------------
+  "Air <-> thermal-mass convective coupling"
+  parameter G_mass::ThermalConductance = 50.0
+  "Envelope conduction + infiltration to outdoor air (U*A + rho*cp*V*ACH)"
+  parameter G_env::ThermalConductance = 165.0
+  "Net radiation factor to sky (emissivity * area * view factor)"
+  parameter Gr::Real = 12.0
+
+  # ---- Boundary temperatures -----------------------------------------------
+  "Outdoor air temperature (Denver winter design night, -18 C)"
+  parameter T_ambient::Temperature = 255.15
+  "Clear-sky radiative temperature (~20 K below ambient)"
+  parameter T_sky::Temperature = 235.15
+  "Initial greenhouse temperature (warmed by day, 24 C)"
+  parameter T_start::Temperature = 297.15
+
+  # ---- Components -----------------------------------------------------------
+  air = ThermalComponents.Components.HeatCapacitor(C=C_air, T0=T_start)
+  mass = ThermalComponents.Components.HeatCapacitor(C=C_mass, T0=T_start)
+  mass_coupling = ThermalComponents.Components.ThermalConductor(G=G_mass)
+  envelope = ThermalComponents.Components.ThermalConductor(G=G_env)
+  radiation = ThermalComponents.Components.BodyRadiation(Gr=Gr)
+  ambient = ThermalComponents.Sources.FixedTemperature(T=T_ambient)
+  sky = ThermalComponents.Sources.FixedTemperature(T=T_sky)
+  T_air = ThermalComponents.Sensors.TemperatureSensor()
+relations
+  # thermal mass <-> air
+  connect(mass.port, mass_coupling.port_a)
+  connect(mass_coupling.port_b, air.port)
+  # air -> outdoor (conduction + infiltration)
+  connect(air.port, envelope.port_a)
+  connect(envelope.port_b, ambient.port)
+  # air -> sky (radiation)
+  connect(air.port, radiation.port_a)
+  connect(radiation.port_b, sky.port)
+  # measurement
+  connect(air.port, T_air.port)
+end
+
+analysis GreenhouseNightTest
+  extends TransientAnalysis(stop=43200, abstol=1e-6, reltol=1e-6)
+  model = GreenhouseNight()
+end
+
+"""
+Analytical diurnal weather driver for a design day (site-configurable).
+
+Outputs are periodic functions of simulation time (t=0 is local midnight). The
+solar gain is a clipped cosine over a daylight window of duration `t_daylight`
+centred on solar noon (reset each day with `mod`); the outdoor air temperature
+is a sinusoid peaking mid-afternoon; the sky radiative temperature tracks a
+fixed offset below air; and the heating setpoint follows a day/night schedule.
+
+All parameters have Denver-winter defaults but are overridable, so the same
+driver represents a summer design day or a different site by retuning them.
+"""
+component DiurnalWeather
+  "Outdoor air temperature [K]"
+  T_ambient = RealOutput()
+  "Effective clear-sky radiative temperature [K]"
+  T_sky = RealOutput()
+  "Raw (unshaded) transmitted solar heat gain [W]"
+  Q_solar = RealOutput()
+  "Heating setpoint from the day/night thermostat schedule [K]"
+  T_setpoint = RealOutput()
+  "Outdoor humidity ratio [kg/kg dry air]"
+  w_out = RealOutput()
+
+  "Length of one day"
+  parameter day_period::Time = 86400.0
+  "Daily mean outdoor air temperature (Denver winter, -11 C)"
+  parameter T_amb_mean::Temperature = 262.15
+  "Half of the day/night outdoor temperature swing"
+  parameter T_amb_amp::Temperature = 7.0
+  "Time of warmest outdoor air (15:00)"
+  parameter t_amb_peak::Time = 54000.0
+  "Clear-sky temperature depression below outdoor air"
+  parameter dT_sky::Real = 20.0
+  "Peak transmitted solar heat gain at solar noon"
+  parameter Q_solar_peak::Real = 6000.0
+  "Time of solar noon (12:00)"
+  parameter t_solar_noon::Time = 43200.0
+  "Daylight duration (window width of the solar half-cosine)"
+  parameter t_daylight::Time = 43200.0
+  "Night-time heating setpoint (15 C)"
+  parameter T_set_night::Temperature = 288.15
+  "Daytime heating setpoint (18 C)"
+  parameter T_set_day::Temperature = 291.15
+  "Outdoor humidity ratio [kg/kg dry air]"
+  parameter w_out_val::Real = 0.006
+  # ---- Annual (seasonal) modulation; all amplitudes default 0 -> design-day mode
+  "Length of one year [s]"
+  parameter year_period::Time = 31536000.0
+  "Seasonal swing of the daily-mean outdoor temperature (0 = single design day)"
+  parameter T_year_amp::Temperature = 0.0
+  "Seasonal swing of the peak solar gain"
+  parameter Q_year_amp::Real = 0.0
+  "Seasonal swing of the daylight duration"
+  parameter daylight_year_amp::Time = 0.0
+  "Time of the warmest/sunniest day of the year (~mid-July)"
+  parameter t_year_peak::Time = 16934400.0
+
+  "Seconds into the current day"
+  variable td::Time
+  "Solar cosine term (positive during daylight)"
+  variable c_sol::Real
+  "Seasonally-modulated daily mean temperature"
+  variable T_mean_eff::Temperature
+  "Seasonally-modulated peak solar gain"
+  variable Q_peak_eff::Real
+  "Seasonally-modulated daylight duration"
+  variable daylight_eff::Time
+relations
+  T_mean_eff = T_amb_mean + T_year_amp * cos(2 * π * (time - t_year_peak) / year_period)
+  Q_peak_eff = Q_solar_peak + Q_year_amp * cos(2 * π * (time - t_year_peak) / year_period)
+  daylight_eff = t_daylight + daylight_year_amp * cos(2 * π * (time - t_year_peak) / year_period)
+  td = mod(time, day_period)
+  c_sol = cos(π * (td - t_solar_noon) / daylight_eff)
+  T_ambient = T_mean_eff + T_amb_amp * cos(2 * π * (time - t_amb_peak) / day_period)
+  T_sky = T_ambient - dT_sky
+  Q_solar = Q_peak_eff * ifelse(c_sol > 0, c_sol, 0.0)
+  T_setpoint = ifelse(c_sol > 0, T_set_day, T_set_night)
+  w_out = w_out_val
+end
+
+"""
+Greenhouse thermal + moisture model over a diurnal cycle with heating and
+evaporative cooling (increment 4).
+
+Sensible thermal network (air, thermal mass, envelope, night-sky radiation,
+heater) as before, now coupled to a zone moisture balance (`MoistureZone`) and
+a direct evaporative cooler (`EvaporativeCooler`) that replaces the dry vent.
+The cooling controller drives shade (reduces transmitted solar) and the
+evaporative-cooler fan; the cooler exploits dry outdoor air to supply air below
+ambient, so it can hold the crop ceiling on a hot afternoon. A fraction
+`beta_transp` of the shaded solar is diverted from sensible heat into plant
+transpiration (latent + moisture). All weather, humidity and site parameters
+(notably atmospheric pressure `P_atm`) are exposed for retuning to another
+season or site.
+"""
+component GreenhouseDiurnal
+  # ---- Thermal capacitances -------------------------------------------------
+  parameter C_air::HeatCapacity = 3.84e4
+  parameter C_mass::HeatCapacity = 3.5e6
+  # ---- Heat transfer conductances ------------------------------------------
+  parameter G_mass::ThermalConductance = 50.0
+  parameter G_env::ThermalConductance = 165.0
+  parameter Gr::Real = 12.0
+  # ---- Heater / heating controller -----------------------------------------
+  "Maximum heater output (oversized to reveal true demand)"
+  parameter heater_max::Real = 15000.0
+  "Heating controller proportional gain [W/K]"
+  parameter k_ctrl::Real = 3000.0
+  "Heating controller integral time [s]"
+  parameter Ti_ctrl::Time = 300.0
+  # ---- Cooling (shade + evaporative) ---------------------------------------
+  "Cooling setpoint / crop temperature ceiling (27 C)"
+  parameter T_cool_set::Temperature = 300.15
+  "Maximum fraction of solar removed by full shade"
+  parameter shade_max::Real = 0.6
+  "Maximum evaporative-cooler dry-air mass flow [kg/s]"
+  parameter mdot_evap_max::Real = 1.0
+  "Evaporative pad effectiveness"
+  parameter eta_pad::Real = 0.85
+  "Zone relative-humidity ceiling (fraction)"
+  parameter RH_max::Real = 0.80
+  "Cooling controller proportional gain [1/K]"
+  parameter k_cool::Real = 1.0
+  "Cooling controller integral time [s]"
+  parameter Ti_cool::Time = 600.0
+  # ---- Moisture / site ------------------------------------------------------
+  "Site atmospheric pressure [Pa] (Denver ≈ 83 kPa, altitude-dependent)"
+  parameter P_atm::Real = 83000.0
+  "Dry-air mass in the zone [kg]"
+  parameter m_dry::Real = 31.6
+  "Fraction of shaded solar diverted to transpiration (latent)"
+  parameter beta_transp::Real = 0.2
+  "Baseline infiltration conductance for moisture exchange [W/K]"
+  parameter G_infil::Real = 15.0
+  "Outdoor humidity ratio [kg/kg dry air]"
+  parameter w_out::Real = 0.006
+  "Initial zone humidity ratio [kg/kg dry air]"
+  parameter w0::Real = 0.006
+  # ---- Supplemental grow lighting ------------------------------------------
+  "Illuminated canopy area [m2]"
+  parameter A_grow::Real = 12.0
+  "Target PPFD during photoperiod [umol/(m2.s)]"
+  parameter PPFD_set::Real = 380.0
+  "Maximum supplemental LED PPFD [umol/(m2.s)]"
+  parameter PPFD_led_max::Real = 380.0
+  "LED photon efficacy [umol/J]"
+  parameter PPE_led::Real = 2.7
+  "Photoperiod start [s into day]"
+  parameter t_photo_start::Time = 18000.0
+  "Photoperiod end [s into day]"
+  parameter t_photo_end::Time = 75600.0
+  # ---- Weather (site/season) ------------------------------------------------
+  parameter T_amb_mean::Temperature = 262.15
+  parameter T_amb_amp::Temperature = 7.0
+  parameter dT_sky::Real = 20.0
+  parameter Q_solar_peak::Real = 6000.0
+  parameter t_daylight::Time = 43200.0
+  parameter T_set_night::Temperature = 288.15
+  parameter T_set_day::Temperature = 291.15
+  # ---- Annual (seasonal) modulation; amplitudes 0 => single design day -------
+  parameter T_year_amp::Temperature = 0.0
+  parameter Q_year_amp::Real = 0.0
+  parameter daylight_year_amp::Time = 0.0
+  parameter t_year_peak::Time = 16934400.0
+  # ---- Initial condition ----------------------------------------------------
+  parameter T_start::Temperature = 288.15
+
+  # ---- Components -----------------------------------------------------------
+  air = ThermalComponents.Components.HeatCapacitor(C=C_air, T0=T_start)
+  mass = ThermalComponents.Components.HeatCapacitor(C=C_mass, T0=T_start)
+  mass_coupling = ThermalComponents.Components.ThermalConductor(G=G_mass)
+  envelope = ThermalComponents.Components.ThermalConductor(G=G_env)
+  radiation = ThermalComponents.Components.BodyRadiation(Gr=Gr)
+  weather = DiurnalWeather(
+    T_amb_mean=T_amb_mean, T_amb_amp=T_amb_amp, dT_sky=dT_sky,
+    Q_solar_peak=Q_solar_peak, t_daylight=t_daylight,
+    T_set_night=T_set_night, T_set_day=T_set_day, w_out_val=w_out,
+    T_year_amp=T_year_amp, Q_year_amp=Q_year_amp,
+    daylight_year_amp=daylight_year_amp, t_year_peak=t_year_peak)
+  ambient = ThermalComponents.Sources.PrescribedTemperature()
+  sky = ThermalComponents.Sources.PrescribedTemperature()
+  solar = ThermalComponents.Sources.PrescribedHeatFlow()
+  heater = ThermalComponents.Sources.PrescribedHeatFlow()
+  T_air = ThermalComponents.Sensors.TemperatureSensor()
+  controller = BlockComponents.Continuous.LimPID(
+    k=k_ctrl, Ti=Ti_ctrl, with_D=false, y_min=0.0, y_max=heater_max)
+  ff0 = BlockComponents.Sources.Constant(k=0.0)
+  # shade + solar split
+  one = BlockComponents.Sources.Constant(k=1.0)
+  tau = BlockComponents.Math.Add(k1=1.0, k2=-shade_max)
+  solar_prod = BlockComponents.Math.Product()
+  solar_sens = BlockComponents.Math.Gain(k=1.0 - beta_transp)
+  # supplemental grow lights (all electrical energy thermalises in the zone)
+  growlights = GrowLights(A_grow=A_grow, PPFD_set=PPFD_set,
+    PPFD_led_max=PPFD_led_max, PPE_led=PPE_led,
+    t_photo_start=t_photo_start, t_photo_end=t_photo_end)
+  led_heat = ThermalComponents.Sources.PrescribedHeatFlow()
+  # cooling controller
+  cool_ctrl = BlockComponents.Continuous.LimPID(
+    k=k_cool, Ti=Ti_cool, with_D=false, y_min=0.0, y_max=1.0)
+  cool_set = BlockComponents.Sources.Constant(k=T_cool_set)
+  # evaporative cooler + moisture zone
+  evap = EvaporativeCooler(mdot_max=mdot_evap_max, eta_pad=eta_pad, P_atm=P_atm, RH_max=RH_max)
+  evap_heat = ThermalComponents.Sources.PrescribedHeatFlow()
+  moisture = MoistureZone(m_dry=m_dry, beta_transp=beta_transp, G_infil=G_infil, P_atm=P_atm, w0=w0)
+relations
+  # thermal network
+  connect(mass.port, mass_coupling.port_a)
+  connect(mass_coupling.port_b, air.port)
+  connect(air.port, envelope.port_a)
+  connect(envelope.port_b, ambient.port)
+  connect(air.port, radiation.port_a)
+  connect(radiation.port_b, sky.port)
+  connect(air.port, solar.port)
+  connect(air.port, heater.port)
+  connect(air.port, evap_heat.port)
+  connect(air.port, led_heat.port)
+  connect(air.port, T_air.port)
+  # weather -> boundary conditions
+  connect(weather.T_ambient, ambient.T)
+  connect(weather.T_sky, sky.T)
+  # shade: shaded solar = raw solar * (1 - shade_max*cool_cmd)
+  connect(one.y, tau.u1)
+  connect(cool_ctrl.y, tau.u2)
+  connect(weather.Q_solar, solar_prod.u1)
+  connect(tau.y, solar_prod.u2)
+  # (1 - beta_transp) of shaded solar enters the air as sensible heat
+  connect(solar_prod.y, solar_sens.u)
+  connect(solar_sens.y, solar.Q_flow)
+  # LED top-up from natural-light deficit; all LED electricity becomes zone heat
+  connect(solar_prod.y, growlights.Q_solar_shaded)
+  connect(growlights.P_heat, led_heat.Q_flow)
+  # heating control loop
+  connect(weather.T_setpoint, controller.u_s)
+  connect(T_air.T, controller.u_m)
+  connect(controller.y, heater.Q_flow)
+  connect(ff0.y, controller.u_ff)
+  # cooling control loop (error = T_air - T_cool_set)
+  connect(T_air.T, cool_ctrl.u_s)
+  connect(cool_set.y, cool_ctrl.u_m)
+  connect(ff0.y, cool_ctrl.u_ff)
+  # evaporative cooler
+  connect(cool_ctrl.y, evap.cmd)
+  connect(weather.T_ambient, evap.T_out)
+  connect(weather.w_out, evap.w_out)
+  connect(moisture.w, evap.w_zone)
+  connect(T_air.T, evap.T_zone)
+  connect(evap.Q_sens, evap_heat.Q_flow)
+  # zone moisture balance
+  connect(evap.mdot_moist, moisture.mdot_moist_evap)
+  connect(solar_prod.y, moisture.Q_solar_shaded)
+  connect(T_air.T, moisture.T_zone)
+  connect(weather.w_out, moisture.w_out)
+end
+
+analysis GreenhouseDiurnalTest
+  extends TransientAnalysis(stop=172800, abstol=1e-6, reltol=1e-6)
+  model = GreenhouseDiurnal(w_out=0.003)
+end
+
+analysis GreenhouseSummerTest
+  extends TransientAnalysis(stop=172800, abstol=1e-6, reltol=1e-6)
+  model = GreenhouseDiurnal(
+    T_amb_mean=297.15, T_amb_amp=10.0, dT_sky=15.0,
+    Q_solar_peak=9000.0, t_daylight=50400.0,
+    T_set_night=288.15, T_set_day=291.15,
+    w_out=0.006, w0=0.008, T_start=297.15)
+end
+
+# Full synthesized Denver year (t=0 is ~Jan 1). Seasonal sinusoids on the
+# daily-mean temperature, peak solar and daylight length ride on top of the
+# diurnal cycle. Baseline envelope; retune the parameters below for a move.
+analysis GreenhouseAnnualTest
+  extends TransientAnalysis(stop=31536000, abstol=1e-4, reltol=1e-4)
+  model = GreenhouseDiurnal(
+    T_amb_mean=283.15, T_amb_amp=8.0, T_year_amp=12.0, dT_sky=18.0,
+    Q_solar_peak=6500.0, Q_year_amp=2000.0,
+    t_daylight=43200.0, daylight_year_amp=9000.0,
+    T_set_night=288.15, T_set_day=291.15,
+    w_out=0.006, w0=0.006, T_start=288.15)
+end

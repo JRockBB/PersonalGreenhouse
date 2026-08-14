@@ -1,0 +1,78 @@
+"""
+Supplemental LED grow lights, modelled as a pure signal block.
+
+During the daily photoperiod the controller tops up the canopy light to a
+target PPFD (`PPFD_set`), supplying only the deficit not already met by natural
+light, capped at the array capacity (`PPFD_led_max`). This makes the LED load
+large on dark winter days and small under summer sun. Outputs the total
+light-equivalent heat delivered to the zone (equal to the LED electrical draw,
+since essentially all of it thermalises in the greenhouse); the electrical draw
+`P_elec` is kept as an observable for the energy accounting.
+
+All quantities are plain numbers (W, umol/m2/s, s). Parameters cover crop light
+target, photoperiod, grow area, LED efficacy and the solar->PAR conversion, so
+the block retunes for a different crop, latitude or site.
+"""
+component GrowLights
+  "Shaded natural solar reaching the canopy [W]"
+  Q_solar_shaded = RealInput()
+  "Light-equivalent heat delivered to the zone (= LED electrical draw) [W]"
+  P_heat = RealOutput()
+
+  "Illuminated canopy area [m2]"
+  parameter A_grow::Real = 12.0
+  "Target canopy PPFD during the photoperiod [umol/(m2.s)]"
+  parameter PPFD_set::Real = 380.0
+  "Maximum supplemental PPFD the LED array can supply [umol/(m2.s)]"
+  parameter PPFD_led_max::Real = 380.0
+  "LED photosynthetic photon efficacy [umol/J electrical]"
+  parameter PPE_led::Real = 2.7
+  "PAR fraction of shortwave solar energy"
+  parameter PAR_frac::Real = 0.45
+  "Sunlight PAR photon conversion [umol/J]"
+  parameter umol_per_J::Real = 4.6
+  "Photoperiod start [s into day] (05:00)"
+  parameter t_photo_start::Time = 18000.0
+  "Photoperiod end [s into day] (21:00)"
+  parameter t_photo_end::Time = 75600.0
+
+  "Seconds into the current day"
+  variable td::Time
+  "Photoperiod indicator (1 during photoperiod)"
+  variable window::Real
+  "Natural canopy PPFD [umol/(m2.s)]"
+  variable ppfd_nat::Real
+  "Supplemental LED PPFD [umol/(m2.s)]"
+  variable ppfd_led::Real
+  "LED electrical draw [W]"
+  variable P_elec::Real
+relations
+  td = mod(time, 86400.0)
+  window = ifelse(td >= t_photo_start, 1.0, 0.0) * ifelse(td <= t_photo_end, 1.0, 0.0)
+  ppfd_nat = PAR_frac * Q_solar_shaded * umol_per_J / A_grow
+  ppfd_led = window * ifelse(PPFD_set - ppfd_nat > 0,
+               ifelse(PPFD_set - ppfd_nat < PPFD_led_max, PPFD_set - ppfd_nat, PPFD_led_max), 0.0)
+  P_elec = ppfd_led * A_grow / PPE_led
+  P_heat = P_elec
+end
+
+"""
+Standalone check: LED load driven by a constant natural-light level, with the
+LED heat dumped into an air mass. The LED should be off outside the photoperiod
+and supply the (setpoint - natural) deficit during it.
+"""
+component TestGrowLights
+  gl = GrowLights()
+  cap = ThermalComponents.Components.HeatCapacitor(C=3.84e4, T0=293.15)
+  led_heat = ThermalComponents.Sources.PrescribedHeatFlow()
+  solar = BlockComponents.Sources.Constant(k=500.0)
+relations
+  connect(solar.y, gl.Q_solar_shaded)
+  connect(gl.P_heat, led_heat.Q_flow)
+  connect(led_heat.port, cap.port)
+end
+
+analysis TestGrowLightsRun
+  extends TransientAnalysis(stop=86400, abstol=1e-6, reltol=1e-6)
+  model = TestGrowLights()
+end

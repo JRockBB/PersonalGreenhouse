@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Denver Greenhouse — Climate & Energy Dashboard</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="dashboard_data.js"></script>
+<style>
+  :root{--bg:#0f1720;--card:#182533;--ink:#e8eef5;--mut:#9fb3c8;--accent:#3ea6ff;--good:#37c871;--warn:#ffb454;--cold:#5aa9e6;--hot:#ff6b6b;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  header{padding:26px 32px;border-bottom:1px solid #24374a;background:linear-gradient(180deg,#13202e,#0f1720)}
+  h1{margin:0 0 4px;font-size:22px}
+  .sub{color:var(--mut);font-size:14px}
+  main{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+  section{margin:34px 0}
+  h2{font-size:17px;margin:0 0 6px;color:var(--accent);letter-spacing:.3px}
+  .note{color:var(--mut);font-size:13px;margin:2px 0 14px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid #24374a;border-radius:12px;padding:16px}
+  .card .k{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  .card .v{font-size:26px;font-weight:600;margin-top:4px}
+  .card .u{color:var(--mut);font-size:12px}
+  .plot{background:var(--card);border:1px solid #24374a;border-radius:12px;padding:8px}
+  select{background:#0f1720;color:var(--ink);border:1px solid #34506b;border-radius:8px;padding:6px 10px;font-size:14px}
+  table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid #24374a;border-radius:12px;overflow:hidden}
+  th,td{padding:10px 14px;text-align:right;border-bottom:1px solid #24374a}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:#13202e;color:var(--mut);font-weight:600;font-size:13px}
+  tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;background:#1d3243;color:var(--accent)}
+  .rec{color:var(--good);font-weight:600}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+  .panel{background:var(--card);border:1px solid #24374a;border-radius:12px;padding:16px}
+  .panel h3{font-size:14px;margin:0 0 10px;color:var(--ink)}
+  .panel ul{margin:0;padding-left:20px;color:var(--mut)}
+  .panel li{margin:6px 0}
+  .budgetbar{height:12px;border-radius:8px;background:#263d52;overflow:hidden;margin-top:8px}
+  .budgetbar span{display:block;height:100%;background:linear-gradient(90deg,var(--good),var(--accent))}
+  .reportlink{display:inline-block;margin-top:10px;padding:8px 12px;border:1px solid #34506b;border-radius:8px;color:var(--accent);text-decoration:none}
+  .planner{display:grid;grid-template-columns:minmax(300px,.9fr) minmax(400px,1.5fr);gap:14px;align-items:start}
+  .slrow{display:grid;grid-template-columns:minmax(150px,1fr) minmax(130px,1.1fr) 60px;gap:10px;align-items:center;margin:9px 0}
+  .slrow label{font-size:13px;color:var(--mut)}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  input[type=number]{background:#0f1720;color:var(--ink);border:1px solid #34506b;border-radius:7px;padding:5px 7px;width:86px}
+  .val{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-size:13px}
+  .sumwarn{color:var(--warn);font-size:12px;margin-top:8px}.sumok{color:var(--good);font-size:12px;margin-top:8px}
+  .smalltable th,.smalltable td{padding:7px 9px;font-size:13px}
+  .hint{padding:10px 12px;border-left:3px solid var(--warn);background:#1d2935;color:var(--mut);font-size:12px;margin-top:12px}
+  @media(max-width:850px){.planner{grid-template-columns:1fr}.slrow{grid-template-columns:1fr 1fr 55px}}
+  footer{color:var(--mut);font-size:12px;border-top:1px solid #24374a;padding:18px 0;margin-top:30px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Denver Autonomous Greenhouse — Climate &amp; Energy Dashboard</h1>
+  <div class="sub">Year-round salsa crops · single-zone thermal + moisture model · cold-climate heat pump + evaporative cooling · synthesized Denver year</div>
+</header>
+<main>
+
+  <section>
+    <h2>Headline — recommended design (improved envelope)</h2>
+    <div class="note">Triple-wall glazing + insulated north wall + night IR curtain. Baseline (double-wall, no curtain) shown for comparison in the tables below.</div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section>
+    <h2>System sizing — grid-tied vs off-grid</h2>
+    <div class="note">Heat pump COP varies with outdoor temperature (≈1.8 cold snap → 3.7 mild). PV yield from Denver monthly peak-sun-hours, 78% derate. Battery = 1.5× worst-day electrical at 80% depth-of-discharge.</div>
+    <table id="sizing"></table>
+    <div class="plot" style="margin-top:14px"><div id="sizeChart" style="height:330px"></div></div>
+  </section>
+
+  <section>
+    <h2>Year-round temperature control</h2>
+    <div class="note">Daily indoor min–max band vs outdoor min–max, over the synthesized year (baseline envelope). Indoor stays inside the crop window while outdoor swings from below −10 °C to above 30 °C.</div>
+    <div class="plot"><div id="bandChart" style="height:380px"></div></div>
+  </section>
+
+  <section>
+    <h2>Monthly electricity</h2>
+    <div class="controls">
+      <span class="pill">envelope</span>
+      <select id="monScenario"><option value="baseline">Baseline</option><option value="improved" selected>Improved</option></select>
+    </div>
+    <div class="plot"><div id="monChart" style="height:380px"></div></div>
+  </section>
+
+
+  <section>
+    <h2>Hydroponic loop — 12 Dutch buckets</h2>
+    <div class="note">Continuous recirculation through 12 pressure-compensating emitters, with automatic reservoir top-off and nutrient-stock dosing.</div>
+    <div class="cards" id="hydroCards"></div>
+  </section>
+
+  <section>
+    <h2>Design-day performance</h2>
+    <div class="controls">
+      <span class="pill">design day</span>
+      <select id="ddScenario"><option value="winter">Winter (cold night)</option><option value="summer" selected>Summer (hot afternoon)</option></select>
+    </div>
+    <div class="plot"><div id="ddChart" style="height:400px"></div></div>
+  </section>
+
+  <section id="cropPlanner">
+    <h2>Crop &amp; salsa portfolio planner</h2>
+    <div class="note">Adjust the salsa-family and pepper-variety shares. Shares are normalized automatically for calculations, so they do not need to total 100 while you edit. Results are planning estimates for crop allocation, water, and supplemental lighting.</div>
+    <div class="planner">
+      <div>
+        <div class="panel">
+          <h3>Production target</h3>
+          <label>500 mL-equivalent jars per week&nbsp; <input id="jarsWeek" type="number" min="0.5" max="30" step="0.5" value="4"></label>
+          <label style="margin-left:14px">Crop-loss reserve&nbsp; <input id="reservePct" type="number" min="0" max="50" step="5" value="20">%</label>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <h3>Salsa family distribution</h3>
+          <div id="salsaSliders"></div>
+          <div id="salsaSum"></div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <h3>Pepper mix inside each salsa</h3>
+          <div class="note">Choose a salsa recipe, then set which peppers make up that recipe's pepper ingredient. The overall pepper crop plan is calculated from the salsa portfolio and these recipe-specific mixes.</div>
+          <select id="pepperRecipe"></select>
+          <div id="pepperSliders" style="margin-top:10px"></div>
+          <div id="pepperSum"></div>
+        </div>
+      </div>
+      <div>
+        <div class="cards" id="cropCards"></div>
+        <table class="smalltable" id="cropTable" style="margin-top:14px"></table>
+        <div class="plot" style="margin-top:14px"><div id="cropChart" style="height:330px"></div></div>
+        <div class="hint">This browser planner does not re-run the Dyad thermal/moisture model. It estimates crop allocation using conservative coefficients. Once you accept a portfolio, re-run the physical model with its canopy area, crop-specific transpiration, temperature, and light targets before purchasing HVAC, PV, or water equipment.</div>
+      </div>
+
+        <div class="panel" style="margin-top:14px">
+          <h3>Physical model re-simulation</h3>
+          <button id="recomputeModel" style="background:#1769aa;color:white;border:0;border-radius:8px;padding:10px 14px;cursor:pointer">Recompute thermal + moisture model</button>
+          <span id="recomputeStatus" class="note" style="margin-left:10px"></span>
+          <div class="note" style="margin-top:8px">Requires the local Julia dashboard server. The annual solve may take 20–60 seconds. Sliders remain instant; the physical results update only when this button is pressed.</div>
+          <div class="cards" id="physicalCards"></div>
+        </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Envelope options — heating load reduction</h2>
+    <div class="note">Winter design-day heating energy and peak demand for progressive envelope upgrades.</div>
+    <div class="plot"><div id="envChart" style="height:360px"></div></div>
+  </section>
+
+  <section>
+    <h2>Monitoring, controls &amp; procurement</h2>
+    <div class="note">Local PLC for plant-survival and safety functions; supervisory mini PC for logging, dashboard, forecasts, and computer vision.</div>
+    <div class="cards" id="controlsCards"></div>
+    <div class="two" style="margin-top:14px">
+      <div class="panel">
+        <h3>Hardwired safety chain</h3>
+        <ul>
+          <li>Emergency stop, smoke, low reservoir level, pump overload</li>
+          <li>No-return-flow shutdown after 10–15 seconds</li>
+          <li>Leak and high-level lockout of top-off and dosing</li>
+          <li>Independent freeze thermostat and high-temperature vent override</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Procurement sequence</h3>
+        <ul>
+          <li>Phase 1: PLC, survival sensors, leaks, pump + spare</li>
+          <li>Phase 2: climate actuators, PAR, lighting and power meters</li>
+          <li>Phase 3: pH/EC, top-off, nutrient A/B dosing</li>
+          <li>Phase 4: mini PC, PoE network and fixed cameras</li>
+        </ul>
+      </div>
+    </div>
+    <a class="reportlink" href="/report.md">Open full Markdown design report</a>
+  </section>
+
+  <footer>
+    Synthesized-weather model (not measured TMY). Electrical includes climate control, grow lights, and the modeled hydroponic pump; supervisory electronics and other auxiliary loads are not yet included.
+    All location, envelope, heat-pump, solar, crop-lighting, and hydraulic parameters remain exposed for retuning.
+  </footer>
+</main>
+
+<script>
+const D = window.DASH;
+const A = ()=>({color:'#9fb3c8', gridcolor:'#24374a', zerolinecolor:'#24374a'});
+const LAY = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#e8eef5'},
+             legend:{orientation:'h', y:1.14}, margin:{l:64,r:20,t:34,b:46}};
+const CFG = {displayModeBar:false, responsive:true};
+const ax  = (extra)=>Object.assign(A(), extra||{});
+
+// ---- summary cards (improved / recommended) ----
+(function(){
+  const s=D.summary.improved, b=D.summary.baseline;
+  const cards=[
+    ['Total electricity', s.total.toLocaleString(), 'kWh / yr'],
+    ['Grow-light electricity', s.led.toLocaleString(), 'kWh / yr'],
+    ['Hydroponic electricity', s.hydro.toLocaleString(), 'kWh / yr'],
+    ['Heat pump electricity', s.hp.toLocaleString(), 'kWh / yr'],
+    ['Cooling electricity', s.cool.toLocaleString(), 'kWh / yr'],
+    ['Water use', s.water.toLocaleString(), 'L / yr'],
+    ['Grid-tied PV', s.pv_grid, 'kW (net-zero)'],
+    ['Off-grid PV + battery', s.pv_off+' kW', s.batt+' kWh battery'],
+    ['Peak heat demand', s.peak_kw, 'kW (design night)'],
+  ];
+  document.getElementById('cards').innerHTML = cards.map(c=>
+    `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+})();
+
+// ---- hydroponic summary ----
+(function(){
+  const h=D.hydroponics;
+  const cards=[
+    ['Pump power', h.pump_w, 'W continuous'],
+    ['Loop flow', h.flow_Lmin, 'L / min'],
+    ['Per-plant delivery', h.flow_per_plant_Lph, 'L / h'],
+    ['Crop water demand', h.crop_water_Lyear.toLocaleString(), 'L / yr'],
+    ['Top-off water', h.topoff_Lyear.toLocaleString(), 'L / yr'],
+    ['Nutrient stock', h.nutrient_stock_Lyear, 'L / yr'],
+    ['Nutrient target', h.concentration_gkg, 'g / kg solution'],
+  ];
+  document.getElementById('hydroCards').innerHTML = cards.map(c=>
+    `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+})();
+
+// ---- controls and procurement summary ----
+(function(){
+  const c=D.controls;
+  const cards=[
+    ['Controls budget', '$'+c.budget_low.toLocaleString(), 'to $'+c.budget_high.toLocaleString()],
+    ['Analog inputs', c.analog_inputs, c.analog_outputs+' analog outputs'],
+    ['Digital inputs', c.digital_inputs, c.digital_outputs+' digital outputs'],
+    ['Climate sensors', c.climate_sensors, 'measurement classes'],
+    ['Hydro sensors', c.hydro_sensors, 'reservoir + loop'],
+    ['PoE cameras', c.cameras, 'fixed RGB views'],
+  ];
+  document.getElementById('controlsCards').innerHTML = cards.map(c=>
+    `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+})();
+
+
+
+// ---- sizing table ----
+(function(){
+  const b=D.summary.baseline, s=D.summary.improved;
+  const rows=[
+    ['Annual heating (thermal)', b.heat_th.toLocaleString(), s.heat_th.toLocaleString(), 'kWh'],
+    ['Annual heat-pump electricity', b.hp.toLocaleString(), s.hp.toLocaleString(), 'kWh'],
+    ['Annual grow-light electricity', b.led.toLocaleString(), s.led.toLocaleString(), 'kWh'],
+    ['Annual hydroponic electricity', b.hydro.toLocaleString(), s.hydro.toLocaleString(), 'kWh'],
+    ['Annual cooling electricity', b.cool, s.cool, 'kWh'],
+    ['Total annual electricity', b.total.toLocaleString(), s.total.toLocaleString(), 'kWh'],
+    ['Annual water', b.water.toLocaleString(), s.water.toLocaleString(), 'L'],
+    ['Grid-tied PV (net-zero)', b.pv_grid, s.pv_grid, 'kW'],
+    ['Off-grid PV (Dec worst-month)', b.pv_off, s.pv_off, 'kW'],
+    ['Off-grid battery', b.batt, s.batt, 'kWh'],
+  ];
+  document.getElementById('sizing').innerHTML =
+    '<thead><tr><th>Metric</th><th>Baseline</th><th>Improved</th><th></th></tr></thead><tbody>'+
+    rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td class="rec">${r[2]}</td><td class="u">${r[3]}</td></tr>`).join('')+
+    '</tbody>';
+})();
+
+// ---- sizing chart: PV (kW) and battery (kWh) in separate panels ----
+(function(){
+  const b=D.summary.baseline, i=D.summary.improved;
+  Plotly.newPlot('sizeChart', [
+    {type:'bar', name:'Grid-tied PV', x:['Baseline','Improved'], y:[b.pv_grid,i.pv_grid], marker:{color:'#37c871'}, xaxis:'x', yaxis:'y'},
+    {type:'bar', name:'Off-grid PV',  x:['Baseline','Improved'], y:[b.pv_off,i.pv_off],   marker:{color:'#3ea6ff'}, xaxis:'x', yaxis:'y'},
+    {type:'bar', name:'Off-grid battery', x:['Baseline','Improved'], y:[b.batt,i.batt], marker:{color:'#ffb454'}, xaxis:'x2', yaxis:'y2'},
+  ], Object.assign({}, LAY, {barmode:'group',
+     xaxis:ax({domain:[0,0.52], anchor:'y'}),
+     yaxis:ax({title:'PV array (kW)', rangemode:'tozero'}),
+     xaxis2:ax({domain:[0.66,1.0], anchor:'y2'}),
+     yaxis2:ax({title:'Battery (kWh)', rangemode:'tozero', anchor:'x2'}),
+     annotations:[
+       {text:'Solar array', x:0.24, y:1.02, xref:'paper', yref:'paper', showarrow:false, font:{color:'#9fb3c8',size:13}},
+       {text:'Battery (off-grid)', x:0.86, y:1.02, xref:'paper', yref:'paper', showarrow:false, font:{color:'#9fb3c8',size:13}}
+     ]}), CFG);
+})();
+
+// ---- annual temperature band ----
+(function(){
+  const x=D.band.day;
+  const hid=(y)=>({x, y, mode:'lines', line:{width:0}, showlegend:false, hoverinfo:'skip'});
+  const set=(v,name,c)=>({x:[0,364], y:[v,v], mode:'lines', name, line:{dash:'dot', width:1.3, color:c}});
+  Plotly.newPlot('bandChart', [
+    hid(D.band.Tamb_max),
+    Object.assign(hid(D.band.Tamb_min), {fill:'tonexty', fillcolor:'rgba(90,169,230,0.25)', name:'Outdoor range', showlegend:true}),
+    hid(D.band.Tair_max),
+    Object.assign(hid(D.band.Tair_min), {fill:'tonexty', fillcolor:'rgba(55,200,113,0.40)', name:'Greenhouse range', showlegend:true}),
+    set(15,'15 °C floor','#c9d6e2'), set(27,'27 °C ceiling','#ff9f9f'),
+  ], Object.assign({}, LAY, {
+     xaxis:ax({title:'day of year', rangemode:'tozero'}),
+     yaxis:ax({title:'temperature (°C)'})}), CFG);
+})();
+
+// ---- monthly electricity (single axis) ----
+function renderMonthly(){
+  const md=D.monthly[document.getElementById('monScenario').value];
+  Plotly.newPlot('monChart', [
+    {type:'bar', name:'Heating (heat-pump elec)', x:D.months, y:md.hp, marker:{color:'#ff6b6b'}},
+    {type:'bar', name:'Grow lights', x:D.months, y:md.led, marker:{color:'#ffb454'}},
+    {type:'bar', name:'Hydroponic pump', x:D.months, y:md.hydro, marker:{color:'#9b7ede'}},
+    {type:'bar', name:'Cooling (fan + pump elec)', x:D.months, y:md.cool, marker:{color:'#3ea6ff'}},
+  ], Object.assign({}, LAY, {barmode:'stack',
+     yaxis:ax({title:'electricity (kWh / month)', rangemode:'tozero'}),
+     xaxis:ax()}), CFG);
+}
+document.getElementById('monScenario').addEventListener('change', renderMonthly);
+renderMonthly();
+
+// ---- design day: three stacked panels sharing the x-axis ----
+function renderDD(){
+  const sc=document.getElementById('ddScenario').value, d=D.designday[sc];
+  const setline=(v,c)=>({x:[0,24], y:[v,v], yaxis:'y', mode:'lines', line:{dash:'dot',width:1,color:c}, showlegend:false, hoverinfo:'skip'});
+  let traces=[
+    {x:d.hour, y:d.Tair, name:'Indoor °C', yaxis:'y', line:{color:'#37c871',width:2.2}},
+    {x:d.hour, y:d.Tamb, name:'Outdoor °C', yaxis:'y', line:{color:'#5aa9e6',dash:'dot'}},
+  ], y2title, y3title;
+  if(sc==='winter'){
+    traces.push({x:d.hour, y:d.heater_kw, name:'Heater thermal (kW)', yaxis:'y2', line:{color:'#ff6b6b'}});
+    traces.push({x:d.hour, y:d.led_kw, name:'Grow lights (kW)', yaxis:'y2', line:{color:'#ffb454'}});
+    traces.push({x:d.hour, y:d.ppfd_nat, name:'Natural PPFD', yaxis:'y3', line:{color:'#5aa9e6'}});
+    traces.push({x:d.hour, y:d.ppfd_led, name:'LED PPFD', yaxis:'y3', line:{color:'#37c871',dash:'dash'}});
+    traces.push(setline(15,'#c9d6e2'));
+    y2title='Power (kW)';
+    y3title='PPFD (umol/m²/s)';
+  } else {
+    traces.push({x:d.hour, y:d.water_kgph, name:'Water (kg/h)', yaxis:'y2', line:{color:'#3ea6ff'}});
+    traces.push({x:d.hour, y:d.led_kw, name:'Grow lights (kW)', yaxis:'y2', line:{color:'#ffb454'}});
+    traces.push({x:d.hour, y:d.rh, name:'RH %', yaxis:'y3', line:{color:'#ffb454'}});
+    traces.push({x:d.hour, y:d.cool_cmd.map(c=>100*c), name:'Cooling command %', yaxis:'y3', line:{color:'#37c871',dash:'dash'}});
+    traces.push(setline(27,'#ff9f9f'));
+    y2title='Water kg/h / light kW';
+    y3title='RH % / cmd %';
+  }
+  Plotly.newPlot('ddChart', traces, Object.assign({}, LAY, {
+     margin:{l:64,r:20,t:34,b:46},
+     xaxis:ax({domain:[0,1], anchor:'y3', title:'hour of day', dtick:3}),
+     yaxis:ax({domain:[0.68,1.0], title:'°C'}),
+     yaxis2:ax({domain:[0.36,0.62], title:y2title, anchor:'x', rangemode:'tozero'}),
+     yaxis3:ax({domain:[0.0,0.30], title:y3title, anchor:'x', rangemode:'tozero'})}), CFG);
+}
+document.getElementById('ddScenario').addEventListener('change', renderDD);
+renderDD();
+
+// ---- envelope study (bars kWh/day + line kW) ----
+Plotly.newPlot('envChart', [
+  {type:'bar', name:'Heating (kWh / design-day)', x:D.envelope.names.map(s=>s.replace('\n','<br>')), y:D.envelope.heat_kwh_day, marker:{color:'#ff6b6b'}},
+  {type:'scatter', name:'Peak demand (kW)', x:D.envelope.names.map(s=>s.replace('\n','<br>')), y:D.envelope.peak_kw, yaxis:'y2', mode:'lines+markers', line:{color:'#37c871'}, marker:{size:9}},
+], Object.assign({}, LAY, {
+   yaxis:ax({title:'heating (kWh/day)', rangemode:'tozero'}),
+   yaxis2:ax({title:'peak (kW)', overlaying:'y', side:'right', showgrid:false, rangemode:'tozero'}),
+   xaxis:ax()}), CFG);
+
+// ---- interactive crop and recipe planner ----
+(function(){
+  const P=D.cropPlanner,state={salsa:{},profiles:{}};
+  P.salsas.forEach(s=>{state.salsa[s.id]=s.weight;state.profiles[s.id]=Object.assign({},s.pepperProfile);});
+  document.getElementById('jarsWeek').value=P.production.jars_per_week;document.getElementById('reservePct').value=P.production.reserve_pct;
+  const normalized=obj=>{const sum=Object.values(obj).reduce((a,b)=>a+b,0),r={};Object.keys(obj).forEach(k=>r[k]=sum?obj[k]/sum:0);return[r,sum];};
+  const sumEl=(id,sum)=>{let e=document.getElementById(id);e.className=Math.abs(sum-100)<.1?'sumok':'sumwarn';e.textContent=`Raw slider total: ${sum.toFixed(0)}% · calculations normalized to 100%`;};
+  document.getElementById('salsaSliders').innerHTML=P.salsas.map(s=>`<div class="slrow"><label>${s.name}</label><input type="range" id="salsa_${s.id}" min="0" max="100" step="1" value="${s.weight}"><span class="val" id="salsa_${s.id}_v">${s.weight}%</span></div>`).join('');
+  P.salsas.forEach(s=>document.getElementById(`salsa_${s.id}`).addEventListener('input',e=>{state.salsa[s.id]=+e.target.value;document.getElementById(`salsa_${s.id}_v`).textContent=e.target.value+'%';update();}));
+  const selector=document.getElementById('pepperRecipe');selector.innerHTML=P.salsas.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');selector.addEventListener('change',()=>{renderPepperSliders();update();});
+  function renderPepperSliders(){const rid=selector.value,prof=state.profiles[rid];document.getElementById('pepperSliders').innerHTML=P.pepperVarieties.map(v=>`<div class="slrow"><label>${v.name}</label><input type="range" id="pep_${v.id}" min="0" max="100" step="1" value="${prof[v.id]||0}"><span class="val" id="pep_${v.id}_v">${prof[v.id]||0}%</span></div>`).join('');P.pepperVarieties.forEach(v=>document.getElementById(`pep_${v.id}`).addEventListener('input',e=>{prof[v.id]=+e.target.value;document.getElementById(`pep_${v.id}_v`).textContent=e.target.value+'%';update();}));}
+  renderPepperSliders();document.getElementById('jarsWeek').addEventListener('input',update);document.getElementById('reservePct').addEventListener('input',update);
+  function update(){
+    const [sw,ssum]=normalized(state.salsa);sumEl('salsaSum',ssum);sumEl('pepperSum',normalized(state.profiles[selector.value])[1]);
+    const jars=Math.max(0,+document.getElementById('jarsWeek').value||0),reserve=1+Math.max(0,+document.getElementById('reservePct').value||0)/100;
+    let demand={tomato:0,tomatillo:0,pepper:0,cilantro:0,onion:0,garlic:0},pepKg={};P.pepperVarieties.forEach(v=>pepKg[v.id]=0);
+    P.salsas.forEach(s=>{Object.keys(demand).forEach(k=>demand[k]+=52*jars*sw[s.id]*(s.ingredients[k]||0));const recipePep=52*jars*sw[s.id]*(s.ingredients.pepper||0),mix=normalized(state.profiles[s.id])[0];P.pepperVarieties.forEach(v=>pepKg[v.id]+=recipePep*mix[v.id]);});Object.keys(demand).forEach(k=>demand[k]*=reserve);Object.keys(pepKg).forEach(k=>pepKg[k]*=reserve);
+    let rows=[],area=0,water=0,led=0,fruitPlants=0;['tomato','tomatillo','cilantro'].forEach(k=>{const c=P.cropCoefficients[k],n=Math.ceil(demand[k]/c.yield_kg);rows.push([c.name,demand[k],n,c.area_m2*n,c.water_Lyear*n]);area+=c.area_m2*n;water+=c.water_Lyear*n;led+=c.area_m2*n*c.light_factor*P.production.led_kwh_m2_year;if(k!=='cilantro')fruitPlants+=n;});
+    P.pepperVarieties.forEach(v=>{let kg=pepKg[v.id],n=Math.ceil(kg/v.yield_kg);rows.push([v.name,kg,n,v.area_m2*n,v.water_Lyear*n]);area+=v.area_m2*n;water+=v.water_Lyear*n;led+=v.area_m2*n*v.light_factor*P.production.led_kwh_m2_year;fruitPlants+=n;});
+    window.currentCropPlan={area_m2:area,crop_water_Lyear:water,led_kwh_year:led,jars_per_week:jars,reserve_pct:(reserve-1)*100,salsa_weights:Object.assign({},state.salsa),pepper_profiles:JSON.parse(JSON.stringify(state.profiles))};
+    const siteWater=water+D.summary.improved.water;document.getElementById('cropCards').innerHTML=[['Greenhouse crop demand',area.toFixed(1),'m² canopy'],['Fruiting plants',fruitPlants,'tomato/tomatillo/pepper'],['Crop water',Math.round(water).toLocaleString(),'L / yr'],['Cooling + crop water',Math.round(siteWater).toLocaleString(),'L / yr'],['Lighting estimate',Math.round(led).toLocaleString(),'kWh / yr'],['Stored outdoor crops',(demand.onion+demand.garlic).toFixed(1),'kg onion + garlic / yr']].map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+    document.getElementById('cropTable').innerHTML='<thead><tr><th>Crop</th><th>kg/yr</th><th>sites/plants</th><th>m²</th><th>water L/yr</th></tr></thead><tbody>'+rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1].toFixed(1)}</td><td>${r[2]}</td><td>${r[3].toFixed(2)}</td><td>${Math.round(r[4])}</td></tr>`).join('')+'</tbody>';Plotly.react('cropChart',[{type:'bar',x:rows.map(r=>r[0]),y:rows.map(r=>r[3]),name:'Canopy area',marker:{color:'#37c871'}},{type:'scatter',x:rows.map(r=>r[0]),y:rows.map(r=>r[4]),name:'Water',yaxis:'y2',mode:'lines+markers',line:{color:'#3ea6ff'}}],Object.assign({},LAY,{yaxis:ax({title:'canopy area (m²)',rangemode:'tozero'}),yaxis2:ax({title:'water (L/year)',overlaying:'y',side:'right',showgrid:false,rangemode:'tozero'}),xaxis:ax({tickangle:-25}),margin:{l:60,r:60,t:34,b:100}}),CFG);
+  }update();
+})();
+
+// ---- explicit server-side physical-model recomputation ----
+(function(){
+  const button=document.getElementById('recomputeModel'),status=document.getElementById('recomputeStatus'),cards=document.getElementById('physicalCards');
+  button.addEventListener('click',async()=>{
+    if(!window.currentCropPlan){status.textContent='Crop plan is not ready.';return;}
+    button.disabled=true;button.style.opacity='.55';status.textContent='Running annual thermal/moisture simulation…';cards.innerHTML='';
+    const t0=performance.now();
+    try{
+      const response=await fetch('/api/recompute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentCropPlan)});
+      const result=await response.json();if(!response.ok||result.status!=='ok')throw new Error(result.message||`server returned ${response.status}`);
+      status.textContent=`Completed in ${((performance.now()-t0)/1000).toFixed(1)} s`;
+      const items=[['Total electricity',result.total_kwh.toLocaleString(),'kWh / yr'],['Heat-pump electricity',result.heatpump_kwh.toLocaleString(),'kWh / yr'],['Grow lights',result.growlight_kwh.toLocaleString(),'kWh / yr'],['Cooling electricity',result.cooling_kwh.toLocaleString(),'kWh / yr'],['Process water',result.total_process_water_L.toLocaleString(),'L / yr'],['Peak air',result.peak_air_C,'°C'],['Maximum RH',result.max_rh_pct,'%'],['Grid-tied PV',result.pv_grid_kw,'kW'],['Off-grid PV + battery',result.pv_off_kw+' kW',result.battery_kwh+' kWh battery']];
+      cards.innerHTML=items.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+    }catch(err){status.textContent=`Could not re-simulate: ${err.message}. Start dashboard/server.jl and open http://127.0.0.1:8080.`;status.style.color='#ffb454';}
+    finally{button.disabled=false;button.style.opacity='1';}
+  });
+})();
+
+
+</script>
+</body>
+</html>

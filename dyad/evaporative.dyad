@@ -1,0 +1,179 @@
+"""
+Direct (pad-and-fan) evaporative cooler, modelled as a pure signal block.
+
+Draws outdoor air at a dry-air mass flow `mdot_max * cmd`, humidifies it toward
+saturation with pad effectiveness `eta_pad` (adiabatic-saturation energy
+balance sets the cooled supply temperature `T_sup`), and reports the sensible
+heat and net water-vapour delivered to the well-mixed zone. Psychrometrics use
+the Magnus saturation formula and the site atmospheric pressure `P_atm`
+(≈83 kPa in Denver, altitude-dependent).
+
+Evaporation is gated off as the zone approaches the RH ceiling `RH_max` so the
+greenhouse is not driven into a disease-promoting humidity; with the pad dry
+(gate 0) the unit is plain ventilation. All temperatures/pressures are handled
+as plain numbers (K / Pa / kg per kg dry air) to keep the empirical formulas
+unit-clean.
+"""
+component EvaporativeCooler
+  "Fan / cooling command in [0,1] (fraction of maximum airflow)"
+  cmd = RealInput()
+  "Outdoor air temperature [K]"
+  T_out = RealInput()
+  "Outdoor humidity ratio [kg/kg dry air]"
+  w_out = RealInput()
+  "Zone humidity ratio [kg/kg dry air]"
+  w_zone = RealInput()
+  "Zone air temperature [K]"
+  T_zone = RealInput()
+  "Sensible heat delivered to the zone air node [W] (negative = cooling)"
+  Q_sens = RealOutput()
+  "Net water-vapour mass flow delivered to the zone [kg/s]"
+  mdot_moist = RealOutput()
+  "Water evaporated (consumption) [kg/s]"
+  mdot_water = RealOutput()
+
+  "Maximum dry-air mass flow through the cooler"
+  parameter mdot_max::Real = 1.0
+  "Pad saturation effectiveness"
+  parameter eta_pad::Real = 0.85
+  "Site atmospheric pressure [Pa] (Denver ≈ 83 kPa)"
+  parameter P_atm::Real = 83000.0
+  "Zone relative-humidity ceiling (fraction) above which evaporation stops"
+  parameter RH_max::Real = 0.80
+  "Relative-humidity smoothing band for the gate"
+  parameter RH_band::Real = 0.05
+  "Specific heat of air [J/(kg.K)]"
+  parameter cp_a::Real = 1006.0
+  "Latent heat of vaporisation [J/kg]"
+  parameter h_fg::Real = 2.45e6
+
+  variable mdot_a::Real
+  variable T_sup::Real
+  variable w_sup::Real
+  variable psat_sup::Real
+  variable wsat_sup::Real
+  variable psat_zone::Real
+  variable pv_zone::Real
+  variable RH_zone::Real
+  variable gate::Real
+  variable eta_eff::Real
+relations
+  mdot_a = mdot_max * cmd
+  # zone relative humidity (from zone humidity ratio and temperature)
+  psat_zone = 610.94 * exp(17.625 * (T_zone - 273.15) / (T_zone - 273.15 + 243.04))
+  pv_zone = w_zone * P_atm / (0.622 + w_zone)
+  RH_zone = pv_zone / psat_zone
+  # smooth RH gate: 1 well below ceiling, 0 at/above ceiling
+  gate = ifelse(RH_zone > RH_max, 0.0,
+          ifelse(RH_zone < RH_max - RH_band, 1.0, (RH_max - RH_zone) / RH_band))
+  eta_eff = eta_pad * gate
+  # adiabatic-saturation supply condition (implicit in T_sup, w_sup)
+  psat_sup = 610.94 * exp(17.625 * (T_sup - 273.15) / (T_sup - 273.15 + 243.04))
+  wsat_sup = 0.622 * psat_sup / (P_atm - psat_sup)
+  w_sup = w_out + eta_eff * (wsat_sup - w_out)
+  cp_a * (T_out - T_sup) = h_fg * (w_sup - w_out)
+  # delivered to the zone
+  Q_sens = mdot_a * cp_a * (T_sup - T_zone)
+  mdot_moist = mdot_a * (w_sup - w_zone)
+  mdot_water = mdot_a * (w_sup - w_out)
+  guess T_sup = 293.15
+  guess w_sup = 0.010
+end
+
+"""
+Well-mixed zone moisture (humidity-ratio) balance, a pure signal block.
+
+Integrates the zone humidity ratio `w` from three moisture flows: the net
+vapour delivered by the evaporative cooler, solar-linked plant transpiration
+(`beta_transp` of the shaded solar diverted from sensible heat into latent),
+baseline infiltration exchange with outdoor air (`G_infil`), and a fast
+condensation sink that caps `w` at saturation. Reports `w` and relative
+humidity `RH`.
+"""
+component MoistureZone
+  "Net water-vapour delivered by the evaporative cooler [kg/s]"
+  mdot_moist_evap = RealInput()
+  "Shaded solar reaching the plants [W]"
+  Q_solar_shaded = RealInput()
+  "Zone air temperature [K]"
+  T_zone = RealInput()
+  "Outdoor humidity ratio [kg/kg dry air]"
+  w_out = RealInput()
+  "Zone humidity ratio [kg/kg dry air]"
+  w = RealOutput()
+  "Zone relative humidity (fraction)"
+  RH = RealOutput()
+
+  "Dry-air mass in the zone [kg]"
+  parameter m_dry::Real = 31.6
+  "Fraction of shaded solar diverted to transpiration (latent)"
+  parameter beta_transp::Real = 0.2
+  "Baseline infiltration conductance for moisture exchange [W/K]"
+  parameter G_infil::Real = 15.0
+  "Condensation sink time constant [s]"
+  parameter tau_cond::Real = 15.0
+  "Site atmospheric pressure [Pa]"
+  parameter P_atm::Real = 83000.0
+  "Specific heat of air [J/(kg.K)]"
+  parameter cp_a::Real = 1006.0
+  "Latent heat of vaporisation [J/kg]"
+  parameter h_fg::Real = 2.45e6
+  "Initial zone humidity ratio [kg/kg dry air]"
+  parameter w0::Real = 0.006
+
+  variable w_int::Real
+  variable mdot_transp::Real
+  variable mdot_infil::Real
+  variable mdot_cond::Real
+  variable psat_zone::Real
+  variable wsat_zone::Real
+  variable pv_zone::Real
+relations
+  initial w_int = w0
+  mdot_transp = beta_transp * Q_solar_shaded / h_fg
+  mdot_infil = (G_infil / cp_a) * (w_out - w_int)
+  psat_zone = 610.94 * exp(17.625 * (T_zone - 273.15) / (T_zone - 273.15 + 243.04))
+  wsat_zone = 0.622 * psat_zone / (P_atm - psat_zone)
+  mdot_cond = -(m_dry / tau_cond) * ifelse(w_int > wsat_zone, w_int - wsat_zone, 0.0)
+  der(w_int) = (mdot_moist_evap + mdot_transp + mdot_infil + mdot_cond) / m_dry
+  w = w_int
+  pv_zone = w_int * P_atm / (0.622 + w_int)
+  RH = pv_zone / psat_zone
+end
+
+"""
+Standalone validation harness: a hot air mass cooled only by the evaporative
+cooler (no envelope, no solar). The zone should cool from 34 C toward the
+evaporative supply temperature and its humidity should approach the supply
+humidity ratio.
+"""
+component TestEvapCooler
+  parameter C_air::HeatCapacity = 3.84e4
+  air = ThermalComponents.Components.HeatCapacitor(C=C_air, T0=307.15)
+  T_air = ThermalComponents.Sensors.TemperatureSensor()
+  evap_heat = ThermalComponents.Sources.PrescribedHeatFlow()
+  evap = EvaporativeCooler(mdot_max=1.0, eta_pad=0.85, P_atm=83000.0)
+  moisture = MoistureZone(m_dry=31.6, beta_transp=0.0, G_infil=0.0, P_atm=83000.0, w0=0.006)
+  cmd = BlockComponents.Sources.Constant(k=1.0)
+  Tout = BlockComponents.Sources.Constant(k=307.15)
+  wout = BlockComponents.Sources.Constant(k=0.006)
+  Qsolar0 = BlockComponents.Sources.Constant(k=0.0)
+relations
+  connect(air.port, T_air.port)
+  connect(air.port, evap_heat.port)
+  connect(evap.Q_sens, evap_heat.Q_flow)
+  connect(cmd.y, evap.cmd)
+  connect(Tout.y, evap.T_out)
+  connect(wout.y, evap.w_out)
+  connect(moisture.w, evap.w_zone)
+  connect(T_air.T, evap.T_zone)
+  connect(evap.mdot_moist, moisture.mdot_moist_evap)
+  connect(T_air.T, moisture.T_zone)
+  connect(wout.y, moisture.w_out)
+  connect(Qsolar0.y, moisture.Q_solar_shaded)
+end
+
+analysis TestEvapCoolerRun
+  extends TransientAnalysis(stop=2000, abstol=1e-6, reltol=1e-6)
+  model = TestEvapCooler()
+end
