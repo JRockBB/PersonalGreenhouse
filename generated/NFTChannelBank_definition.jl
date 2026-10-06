@@ -4,10 +4,8 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
-   NFTChannelBank(; name, n_channels, sites_per_channel, channel_length, channel_width, slope, lift, target_flow_Lmin, dp_inlet_nom, depth_nom, depth_min, rho, g, reverse_factor, eps)
+   NFTChannelBank(; name, n_channels, sites_per_channel, channel_length, channel_width, slope, lift, target_flow_Lmin, dp_inlet_nom, depth_nom, depth_min, rho, g, reverse_factor, eps, m_flow0)
 
 Parallel NFT channel bank with dynamic liquid holdup and gravity return.
 
@@ -36,6 +34,7 @@ outlet is an open gravity return, so the channel bank itself conserves mass.
 | `g`         | Gravity [m/s2]                         | m/s2  |   9.80665 |
 | `reverse_factor`         | Reverse-flow resistance multiplier                         | --  |   10000.0 |
 | `eps`         | Regularisation for flow/depth roots                         | --  |   1e-10 |
+| `m_flow0`         | Initial channel inlet flow (used when coupled to an inertial supply pipe)                         | kg/s  |   target_total_m |
 
 ## Connectors
 
@@ -58,7 +57,7 @@ outlet is an open gravity return, so the channel bank itself conserves mass.
 | `dp_static`         |                          | Pa  |
 | `dp_available`         |                          | Pa  |
 """
-@component function NFTChannelBank(; name = nothing, n_channels=Float64(2.0), sites_per_channel=Float64(7.0), channel_length=Float64(2.0), channel_width=0.1, slope=0.025, lift=1.5, target_flow_Lmin=0.5, dp_inlet_nom=Float64(3000.0), depth_nom=0.004, depth_min=0.001, rho=Float64(998.0), g=9.80665, reverse_factor=Float64(10000.0), eps=1e-10, continuity__graph0, kwargs...)
+@component function NFTChannelBank(; name = nothing, n_channels=Float64(2.0), sites_per_channel=Float64(7.0), channel_length=Float64(2.0), channel_width=0.1, slope=0.025, lift=1.5, target_flow_Lmin=0.5, dp_inlet_nom=Float64(3000.0), depth_nom=0.004, depth_min=0.001, rho=Float64(998.0), g=9.80665, reverse_factor=Float64(10000.0), eps=1e-10, m_flow0=nothing, continuity__graph0, kwargs...)
   isnothing(name) && throw(ArgumentError("""
     The `name` keyword must be provided. Please consider using the `@named` macro,
     like so:
@@ -92,6 +91,7 @@ outlet is an open gravity return, so the channel bank itself conserves mass.
   append!(__params, @parameters (K_drain::Real), [misc = "final"])
 
   ### Deferred assignment (default values that depend on final parameters)
+  isnothing(m_flow0) && (m_flow0 = target_total_m)
 
   ### Symbolic Parameters
   __local__n_channels = n_channels
@@ -136,6 +136,9 @@ outlet is an open gravity return, so the channel bank itself conserves mass.
   __local__eps = eps
   append!(__params, @parameters (eps::Real), [description = "Regularisation for flow/depth roots"])
   __initial_conditions[eps] = __local__eps
+  __local__m_flow0 = m_flow0
+  append!(__params, @parameters (m_flow0::Real), [description = "Initial channel inlet flow (used when coupled to an inertial supply pipe)"])
+  __initial_conditions[m_flow0] = __local__m_flow0
 
   ### Final Parameters (assignments)
   __bindings[target_total_m] = rho * n_channels * target_flow_Lmin / 60000.0

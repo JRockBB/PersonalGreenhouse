@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    OpenReservoir(; name, A_tank, level0, level_max, h_outlet, p_atm, rho, g, head_eps)
 

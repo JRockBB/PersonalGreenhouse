@@ -91,8 +91,10 @@ condensation sink that caps `w` at saturation. Reports `w` and relative
 humidity `RH`.
 """
 component MoistureZone
-  "Net water-vapour delivered by the evaporative cooler [kg/s]"
+  "Net water-vapour delivered by evaporative cooling [kg/s]"
   mdot_moist_evap = RealInput()
+  "Additional controlled moisture source/removal [kg/s]"
+  mdot_moist_control = RealInput()
   "Shaded solar reaching the plants [W]"
   Q_solar_shaded = RealInput()
   "Zone air temperature [K]"
@@ -135,7 +137,7 @@ relations
   psat_zone = 610.94 * exp(17.625 * (T_zone - 273.15) / (T_zone - 273.15 + 243.04))
   wsat_zone = 0.622 * psat_zone / (P_atm - psat_zone)
   mdot_cond = -(m_dry / tau_cond) * ifelse(w_int > wsat_zone, w_int - wsat_zone, 0.0)
-  der(w_int) = (mdot_moist_evap + mdot_transp + mdot_infil + mdot_cond) / m_dry
+  der(w_int) = (mdot_moist_evap + mdot_moist_control + mdot_transp + mdot_infil + mdot_cond) / m_dry
   w = w_int
   pv_zone = w_int * P_atm / (0.622 + w_int)
   RH = pv_zone / psat_zone
@@ -158,6 +160,7 @@ component TestEvapCooler
   Tout = BlockComponents.Sources.Constant(k=307.15)
   wout = BlockComponents.Sources.Constant(k=0.006)
   Qsolar0 = BlockComponents.Sources.Constant(k=0.0)
+  moisture_control0 = BlockComponents.Sources.Constant(k=0.0)
 relations
   connect(air.port, T_air.port)
   connect(air.port, evap_heat.port)
@@ -168,6 +171,7 @@ relations
   connect(moisture.w, evap.w_zone)
   connect(T_air.T, evap.T_zone)
   connect(evap.mdot_moist, moisture.mdot_moist_evap)
+  connect(moisture_control0.y, moisture.mdot_moist_control)
   connect(T_air.T, moisture.T_zone)
   connect(wout.y, moisture.w_out)
   connect(Qsolar0.y, moisture.Q_solar_shaded)

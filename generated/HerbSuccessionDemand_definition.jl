@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    HerbSuccessionDemand(; name, sites_per_channel, cycle_time, grow_time, phase_offset, baseline_per_site, beta_transp, h_fg)
 

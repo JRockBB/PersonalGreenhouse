@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    RecirculationPump(; name, dp_shutoff, m_flow_free, eta, P_idle, rho, reverse_factor, m_eps)
 

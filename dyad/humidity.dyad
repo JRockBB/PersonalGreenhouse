@@ -1,0 +1,235 @@
+"""
+Dynamic interior glazing-surface and condensation model.
+
+The interior surface temperature follows the steady inside-film temperature
+with a first-order glazing time constant. Condensation begins when the zone
+humidity ratio exceeds saturation at that surface. The component reports the
+surface temperature, dew-point margin, condensate rate, and latent heat released
+at the glazing. Inputs and outputs are signals so this diagnostic/moisture model
+can be coupled to the existing single-zone thermal network without duplicating
+its envelope-conduction path.
+"""
+component CondensingGlazing
+  "Well-mixed zone air temperature [K]"
+  T_zone = RealInput()
+  "Outdoor air temperature [K]"
+  T_out = RealInput()
+  "Zone humidity ratio [kg/kg dry air]"
+  w_zone = RealInput()
+  "Interior glazing-surface temperature [K]"
+  T_surface_out = RealOutput()
+  "Surface temperature minus zone dew point [K]"
+  dewpoint_margin = RealOutput()
+  "Liquid condensate production [kg/s]"
+  mdot_condensate = RealOutput()
+  "Latent heat released at glazing [W]"
+  Q_latent = RealOutput()
+
+  "Transparent glazing area [m2]"
+  parameter A_glazing::Real = 78.37
+  "Overall glazing U-value [W/(m2.K)]"
+  parameter U_glazing::Real = 1.8
+  "Interior convective film coefficient [W/(m2.K)]"
+  parameter h_inside::Real = 7.7
+  "Glazing surface response time [s]"
+  parameter tau_surface::Time = 120.0
+  "Initial interior surface temperature [K]"
+  parameter T_surface0::Temperature = 288.15
+  "Condensation mass-transfer coefficient [kg/(m2.s)/(kg/kg)]"
+  parameter k_mass::Real = 5e-4
+  "Site atmospheric pressure [Pa]"
+  parameter P_atm::Real = 83000.0
+  "Latent heat of vaporisation [J/kg]"
+  parameter h_fg::Real = 2.45e6
+
+  variable T_surface::Temperature
+  variable T_surface_eq::Temperature
+  variable psat_surface::Real
+  variable wsat_surface::Real
+  variable pv_zone::Real
+  variable gamma_dew::Real
+  variable T_dew::Temperature
+  variable humidity_excess::Real
+relations
+  initial T_surface = T_surface0
+  T_surface_eq = T_zone - (U_glazing / h_inside) * (T_zone - T_out)
+  der(T_surface) = (T_surface_eq - T_surface) / tau_surface
+  psat_surface = 610.94 * exp(17.625 * (T_surface - 273.15) /
+    (T_surface - 273.15 + 243.04))
+  wsat_surface = 0.622 * psat_surface / (P_atm - psat_surface)
+  pv_zone = w_zone * P_atm / (0.622 + w_zone)
+  gamma_dew = log(pv_zone / 610.94)
+  T_dew = 273.15 + 243.04 * gamma_dew / (17.625 - gamma_dew)
+  humidity_excess = ifelse(w_zone > wsat_surface, w_zone - wsat_surface, 0.0)
+  mdot_condensate = k_mass * A_glazing * humidity_excess
+  Q_latent = h_fg * mdot_condensate
+  T_surface_out = T_surface
+  dewpoint_margin = T_surface - T_dew
+end
+
+"""
+Representative winter condensation test.
+
+The zone is held at 18 C and humidity ratio 0.010 kg/kg. Outdoor temperature
+steps from 7 C to -15 C at t=600 s. The warm glazing should stay above dew point
+with no condensation; after the cold step the surface should fall below dew
+point and produce condensate.
+"""
+component TestCondensingGlazing
+  glazing = CondensingGlazing(A_glazing=78.37, U_glazing=1.8,
+    h_inside=7.7, tau_surface=120.0, T_surface0=288.15,
+    k_mass=5e-4, P_atm=83000.0)
+  Tzone = BlockComponents.Sources.Constant(k=291.15)
+  Tout = BlockComponents.Sources.Step(offset=280.15, height=-22.0,
+    start_time=600.0)
+  wzone = BlockComponents.Sources.Constant(k=0.010)
+relations
+  connect(Tzone.y, glazing.T_zone)
+  connect(Tout.y, glazing.T_out)
+  connect(wzone.y, glazing.w_zone)
+end
+
+analysis TestCondensingGlazingRun
+  extends TransientAnalysis(stop=1800.0, alg=ODEAlg.Tsit5(),
+    abstol=1e-8, reltol=1e-8)
+  model = TestCondensingGlazing()
+end
+
+
+"""
+Winter humidity-control subsystem: sensible-recovery ventilation plus backup
+condensing dehumidification.
+
+The controller first modulates outdoor-air ventilation from zero to
+`mdot_hrv_max`. The HRV removes moisture while returning `eta_sensible` of the
+sensible exhaust heat. If ventilation saturates, a backup condensing
+dehumidifier removes the remaining moisture. Its electrical power and latent
+condensation heat are returned as sensible heat to the greenhouse.
+"""
+component WinterHumidityControl
+  RH_zone = RealInput()
+  w_zone = RealInput()
+  w_out = RealInput()
+  T_zone = RealInput()
+  T_out = RealInput()
+  "Moisture delivered to zone [kg/s], negative means removal"
+  mdot_moist = RealOutput()
+  "Net sensible heat delivered to zone [W]"
+  Q_zone = RealOutput()
+  "Total electrical draw [W]"
+  P_elec = RealOutput()
+  "HRV dry-air mass flow [kg/s]"
+  mdot_hrv = RealOutput()
+  "Dehumidifier collection [kg/s]"
+  mdot_dehum = RealOutput()
+
+  parameter RH_set::Real = 0.75
+  "RH threshold for backup dehumidification"
+  parameter RH_dehum_set::Real = 0.80
+  parameter mdot_hrv_max::Real = 0.08
+  parameter eta_sensible::Real = 0.80
+  parameter P_fan_max::Real = 90.0
+  parameter mdot_dehum_max::Real = 5e-5
+  "Dehumidifier efficiency [kg/kWh]"
+  parameter dehum_eff_kg_per_kWh::Real = 1.8
+  parameter cp_air::Real = 1006.0
+  parameter h_fg::Real = 2.45e6
+  parameter k_hrv::Real = 20.0
+  parameter Ti_hrv::Time = 600.0
+  parameter k_dehum::Real = 20.0
+  parameter Ti_dehum::Time = 900.0
+
+  setpoint = BlockComponents.Sources.Constant(k=RH_set)
+  dehum_setpoint = BlockComponents.Sources.Constant(k=RH_dehum_set)
+  zero = BlockComponents.Sources.Constant(k=0.0)
+  hrv_ctrl = BlockComponents.Continuous.LimPID(k=k_hrv, Ti=Ti_hrv,
+    with_D=false, y_min=0.0, y_max=1.0)
+  dehum_ctrl = BlockComponents.Continuous.LimPID(k=k_dehum, Ti=Ti_dehum,
+    with_D=false, y_min=0.0, y_max=1.0)
+  variable hrv_cmd::Real
+  variable dehum_cmd::Real
+  variable m_hrv::MassFlowRate
+  variable m_remove_hrv::MassFlowRate
+  variable m_remove_dehum::MassFlowRate
+  variable Q_hrv_loss::Real
+  variable P_fan::Real
+  variable P_dehum::Real
+relations
+  connect(RH_zone, hrv_ctrl.u_s)
+  connect(setpoint.y, hrv_ctrl.u_m)
+  connect(zero.y, hrv_ctrl.u_ff)
+  connect(RH_zone, dehum_ctrl.u_s)
+  connect(dehum_setpoint.y, dehum_ctrl.u_m)
+  connect(zero.y, dehum_ctrl.u_ff)
+  hrv_cmd = hrv_ctrl.y
+  dehum_cmd = dehum_ctrl.y * ifelse(hrv_cmd > 0.98, 1.0, 0.0)
+  m_hrv = mdot_hrv_max * hrv_cmd
+  m_remove_hrv = m_hrv * ifelse(w_zone > w_out, w_zone - w_out, 0.0)
+  m_remove_dehum = mdot_dehum_max * dehum_cmd
+  Q_hrv_loss = (1.0 - eta_sensible) * m_hrv * cp_air * (T_zone - T_out)
+  P_fan = P_fan_max * hrv_cmd^3
+  P_dehum = m_remove_dehum * 3.6e6 / dehum_eff_kg_per_kWh
+  mdot_moist = -(m_remove_hrv + m_remove_dehum)
+  Q_zone = -Q_hrv_loss + P_fan + P_dehum + h_fg*m_remove_dehum
+  P_elec = P_fan + P_dehum
+  mdot_hrv = m_hrv
+  mdot_dehum = m_remove_dehum
+end
+
+component TestWinterHumidityControl
+  moisture = MoistureZone(m_dry=108.0, beta_transp=0.0, G_infil=0.0,
+    P_atm=83000.0, w0=0.010)
+  control = WinterHumidityControl(RH_set=0.75, mdot_hrv_max=0.08,
+    mdot_dehum_max=5e-5)
+  Tzone = BlockComponents.Sources.Constant(k=291.15)
+  Tout = BlockComponents.Sources.Constant(k=268.15)
+  wout = BlockComponents.Sources.Constant(k=0.002)
+  Qsolar = BlockComponents.Sources.Constant(k=0.0)
+  source = BlockComponents.Sources.Constant(k=2.7777778e-5)
+relations
+  connect(source.y, moisture.mdot_moist_evap)
+  connect(control.mdot_moist, moisture.mdot_moist_control)
+  connect(Qsolar.y, moisture.Q_solar_shaded)
+  connect(Tzone.y, moisture.T_zone)
+  connect(wout.y, moisture.w_out)
+  connect(moisture.RH, control.RH_zone)
+  connect(moisture.w, control.w_zone)
+  connect(wout.y, control.w_out)
+  connect(Tzone.y, control.T_zone)
+  connect(Tout.y, control.T_out)
+end
+
+analysis TestWinterHumidityControlRun
+  extends TransientAnalysis(stop=86400.0, alg=ODEAlg.AutoImplicit(),
+    abstol=1e-8, reltol=1e-8)
+  model = TestWinterHumidityControl()
+end
+
+component TestWinterHumidityControlBackup
+  moisture = MoistureZone(m_dry=108.0, beta_transp=0.0, G_infil=0.0,
+    P_atm=83000.0, w0=0.012)
+  control = WinterHumidityControl(RH_set=0.75, RH_dehum_set=0.80,
+    mdot_hrv_max=0.008, mdot_dehum_max=5e-5)
+  Tzone = BlockComponents.Sources.Constant(k=291.15)
+  Tout = BlockComponents.Sources.Constant(k=268.15)
+  wout = BlockComponents.Sources.Constant(k=0.002)
+  Qsolar = BlockComponents.Sources.Constant(k=0.0)
+  source = BlockComponents.Sources.Constant(k=1.1111111e-4)
+relations
+  connect(source.y, moisture.mdot_moist_evap)
+  connect(control.mdot_moist, moisture.mdot_moist_control)
+  connect(Qsolar.y, moisture.Q_solar_shaded)
+  connect(Tzone.y, moisture.T_zone)
+  connect(wout.y, moisture.w_out)
+  connect(moisture.RH, control.RH_zone)
+  connect(moisture.w, control.w_zone)
+  connect(wout.y, control.w_out)
+  connect(Tzone.y, control.T_zone)
+  connect(Tout.y, control.T_out)
+end
+
+analysis TestWinterHumidityControlBackupRun
+  extends TransientAnalysis(stop=86400.0, alg=ODEAlg.AutoImplicit(),
+    abstol=1e-8, reltol=1e-8)
+  model = TestWinterHumidityControlBackup()
+end

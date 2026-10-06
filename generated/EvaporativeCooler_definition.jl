@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    EvaporativeCooler(; name, mdot_max, eta_pad, P_atm, RH_max, RH_band, cp_a, h_fg)
 

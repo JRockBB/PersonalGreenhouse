@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    HerbNFTSystem(; name, Q_solar_peak, Q_year_amp, t_daylight, daylight_year_amp, herb_solar_fraction, A_tank, level_set, concentration_set, stock_concentration, crop_nutrient_ratio, rho, diameter)
 
@@ -127,7 +125,7 @@ The loop is parameterized independently from the fruiting-crop Dutch buckets.
   push!(__systems, @named pump = PersonalGreenhouse.RecirculationPump(; dp_shutoff=Float64(29400.0), m_flow_free=0.035, eta=0.22, P_idle=Float64(5.0), rho=rho, continuity__graph0=medium, pump_overrides...))
   # Subcomponent supply of type HydraulicComponents.Pipes.TubeBase
   supply_overrides = __pop_subcomponent_overrides!(__overrides, "supply")
-  push!(__systems, @named supply = HydraulicComponents.Pipes.TubeBase(; area=area, length=Float64(3.0), perimeter=perimeter, shape_factor=Float64(64.0), head_factor=1.5, add_inertia=true, m_flow0=Float64(0.0), continuity__graph0=medium, supply_overrides...))
+  push!(__systems, @named supply = HydraulicComponents.Pipes.TubeBase(; area=area, length=Float64(3.0), perimeter=perimeter, shape_factor=Float64(64.0), head_factor=1.5, add_inertia=true, m_flow0=0.0166333333, continuity__graph0=medium, supply_overrides...))
   # Subcomponent channels of type PersonalGreenhouse.NFTChannelBank
   channels_overrides = __pop_subcomponent_overrides!(__overrides, "channels")
   push!(__systems, @named channels = PersonalGreenhouse.NFTChannelBank(; n_channels=Float64(2.0), sites_per_channel=Float64(7.0), channel_length=Float64(2.0), channel_width=0.1, slope=0.025, lift=1.5, target_flow_Lmin=0.5, dp_inlet_nom=Float64(3000.0), depth_nom=0.004, depth_min=0.001, rho=rho, continuity__graph0=medium, channels_overrides...))

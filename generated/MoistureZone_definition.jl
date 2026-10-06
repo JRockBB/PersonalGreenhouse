@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    MoistureZone(; name, m_dry, beta_transp, G_infil, tau_cond, P_atm, cp_a, h_fg, w0)
 
@@ -34,6 +32,7 @@ humidity `RH`.
 ## Connectors
 
  * `mdot_moist_evap` - This connector represents a real signal as an input to a component ([`RealInput`](@ref))
+ * `mdot_moist_control` - This connector represents a real signal as an input to a component ([`RealInput`](@ref))
  * `Q_solar_shaded` - This connector represents a real signal as an input to a component ([`RealInput`](@ref))
  * `T_zone` - This connector represents a real signal as an input to a component ([`RealInput`](@ref))
  * `w_out` - This connector represents a real signal as an input to a component ([`RealInput`](@ref))
@@ -112,6 +111,7 @@ humidity `RH`.
 
   ### Final Path Parameters
   append!(__vars, @variables (mdot_moist_evap(t)::Real), [input = true])
+  append!(__vars, @variables (mdot_moist_control(t)::Real), [input = true])
   append!(__vars, @variables (Q_solar_shaded(t)::Real), [input = true])
   append!(__vars, @variables (T_zone(t)::Real), [input = true])
   append!(__vars, @variables (w_out(t)::Real), [input = true])
@@ -179,7 +179,7 @@ humidity `RH`.
   push!(__eqs, psat_zone ~ 610.94 * exp(17.625 * (T_zone - 273.15) / (T_zone - 273.15 + 243.04)))
   push!(__eqs, wsat_zone ~ 0.622 * psat_zone / (P_atm - psat_zone))
   push!(__eqs, mdot_cond ~ -(m_dry / tau_cond) * ifelse(w_int > wsat_zone, w_int - wsat_zone, 0.0))
-  push!(__eqs, ModelingToolkit.D_nounits(w_int) ~ (mdot_moist_evap + mdot_transp + mdot_infil + mdot_cond) / m_dry)
+  push!(__eqs, ModelingToolkit.D_nounits(w_int) ~ (mdot_moist_evap + mdot_moist_control + mdot_transp + mdot_infil + mdot_cond) / m_dry)
   push!(__eqs, w ~ w_int)
   push!(__eqs, pv_zone ~ w_int * P_atm / (0.622 + w_int))
   push!(__eqs, RH ~ pv_zone / psat_zone)

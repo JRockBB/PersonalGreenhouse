@@ -61,8 +61,8 @@
 <main>
 
   <section>
-    <h2>Headline — recommended design (improved envelope)</h2>
-    <div class="note">Triple-wall glazing + insulated north wall + night IR curtain. Baseline (double-wall, no curtain) shown for comparison in the tables below.</div>
+    <h2>Headline — 6 × 6 m geometry + default crop portfolio</h2>
+    <div class="note">Validated annual model: pitched roof, triple-wall glazing, insulated north wall, night IR curtain, 36 fruiting buckets, 14 NFT sites, and crop-group-specific lighting/transpiration.</div>
     <div class="cards" id="cards"></div>
   </section>
 
@@ -75,7 +75,7 @@
 
   <section>
     <h2>Year-round temperature control</h2>
-    <div class="note">Daily indoor min–max band vs outdoor min–max, over the synthesized year (baseline envelope). Indoor stays inside the crop window while outdoor swings from below −10 °C to above 30 °C.</div>
+    <div class="note">Daily indoor min–max band vs outdoor min–max from the earlier 12 m² reference run. Use the crop planner’s recompute button for current geometry/portfolio headline results.</div>
     <div class="plot"><div id="bandChart" style="height:380px"></div></div>
   </section>
 
@@ -90,9 +90,37 @@
 
 
   <section>
-    <h2>Hydroponic loop — 12 Dutch buckets</h2>
-    <div class="note">Continuous recirculation through 12 pressure-compensating emitters, with automatic reservoir top-off and nutrient-stock dosing.</div>
+    <h2>Preliminary greenhouse layout — default portfolio</h2>
+    <div class="note">Concept basis: 6 m × 6 m footprint, insulated north service wall, three 12-plant trellised Dutch-bucket manifolds, and a separate two-channel herb NFT rack.</div>
+    <div class="two">
+      <div class="panel">
+        <h3>Space allocation</h3>
+        <table class="smalltable"><tbody>
+          <tr><td>Fruiting canopy / trellises</td><td>21–23 m²</td></tr>
+          <tr><td>Herb NFT + service access</td><td>2–3 m²</td></tr>
+          <tr><td>Central and cross aisles</td><td>7–8 m²</td></tr>
+          <tr><td>Reservoirs, controls, dosing, HVAC</td><td>3–4 m²</td></tr>
+        </tbody></table>
+      </div>
+      <div class="panel">
+        <h3>Arrangement</h3>
+        <ul>
+          <li>North wall: two reservoirs, dosing, PLC panel, HVAC/service equipment</li>
+          <li>Three north–south crop rows, 12 Dutch buckets per balanced manifold</li>
+          <li>Balancing valves and returns accessible from central/cross aisles</li>
+          <li>Two 2 m NFT channels near the cooler north/service side</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Hydroponic systems</h2>
+    <div class="note">Separate nutrient loops: continuous Dutch-bucket recirculation for fruiting crops and two staggered NFT channels for cilantro/herbs.</div>
+    <h3 style="font-size:14px">Fruiting crops — 36 buckets / three balanced manifolds</h3>
     <div class="cards" id="hydroCards"></div>
+    <h3 style="font-size:14px;margin-top:18px">Cilantro/herbs — two NFT channels</h3>
+    <div class="cards" id="nftCards"></div>
   </section>
 
   <section>
@@ -113,6 +141,14 @@
           <h3>Production target</h3>
           <label>500 mL-equivalent jars per week&nbsp; <input id="jarsWeek" type="number" min="0.5" max="30" step="0.5" value="4"></label>
           <label style="margin-left:14px">Crop-loss reserve&nbsp; <input id="reservePct" type="number" min="0" max="50" step="5" value="20">%</label>
+          <div style="margin-top:12px">
+            <label>Width&nbsp; <input id="geomWidth" type="number" min="3" max="20" step="0.5" value="6"> m</label>
+            <label style="margin-left:10px">Length&nbsp; <input id="geomLength" type="number" min="3" max="30" step="0.5" value="6"> m</label>
+          </div>
+          <div style="margin-top:8px">
+            <label>Wall height&nbsp; <input id="geomWall" type="number" min="1.8" max="6" step="0.1" value="2.4"> m</label>
+            <label style="margin-left:10px">Roof rise&nbsp; <input id="geomRise" type="number" min="0.3" max="4" step="0.1" value="1.2"> m</label>
+          </div>
         </div>
         <div class="panel" style="margin-top:14px">
           <h3>Salsa family distribution</h3>
@@ -214,16 +250,33 @@ const ax  = (extra)=>Object.assign(A(), extra||{});
 (function(){
   const h=D.hydroponics;
   const cards=[
+    ['Buckets / manifolds', h.plants, h.manifolds+' balanced branches'],
+    ['Reservoir', h.reservoir_L, 'L class'],
     ['Pump power', h.pump_w, 'W continuous'],
     ['Loop flow', h.flow_Lmin, 'L / min'],
     ['Per-plant delivery', h.flow_per_plant_Lph, 'L / h'],
     ['Crop water demand', h.crop_water_Lyear.toLocaleString(), 'L / yr'],
     ['Top-off water', h.topoff_Lyear.toLocaleString(), 'L / yr'],
-    ['Nutrient stock', h.nutrient_stock_Lyear, 'L / yr'],
+    ['Nutrient stock', h.nutrient_stock_Lyear, 'L / yr proxy'],
     ['Nutrient target', h.concentration_gkg, 'g / kg solution'],
   ];
   document.getElementById('hydroCards').innerHTML = cards.map(c=>
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+})();
+
+// ---- separate herb NFT loop summary ----
+(function(){
+  const h=D.nftHerbs;
+  const cards=[
+    ['NFT sites',h.total_sites,`${h.channels} channels × ${h.sites_per_channel}`],
+    ['Active sites',h.active_min+'–'+h.active_max,'staggered succession'],
+    ['Flow per channel',h.flow_per_channel_Lmin,'L / min'],
+    ['Film depth',h.film_depth_mm,'mm'],
+    ['Herb water',Math.round(h.crop_water_Lyear).toLocaleString(),'L / yr'],
+    ['Pump electricity',h.pump_kwh_year,'kWh / yr'],
+    ['Nutrient target',h.concentration_gkg,'g / kg solution'],
+  ];
+  document.getElementById('nftCards').innerHTML=cards.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
 })();
 
 // ---- controls and procurement summary ----
@@ -234,14 +287,11 @@ const ax  = (extra)=>Object.assign(A(), extra||{});
     ['Analog inputs', c.analog_inputs, c.analog_outputs+' analog outputs'],
     ['Digital inputs', c.digital_inputs, c.digital_outputs+' digital outputs'],
     ['Climate sensors', c.climate_sensors, 'measurement classes'],
-    ['Hydro sensors', c.hydro_sensors, 'reservoir + loop'],
+    ['Hydro sensors', c.hydro_sensors, 'reservoir + loops'],
     ['PoE cameras', c.cameras, 'fixed RGB views'],
   ];
-  document.getElementById('controlsCards').innerHTML = cards.map(c=>
-    `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+  document.getElementById('controlsCards').innerHTML=cards.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
 })();
-
-
 
 // ---- sizing table ----
 (function(){
@@ -304,7 +354,8 @@ function renderMonthly(){
   Plotly.newPlot('monChart', [
     {type:'bar', name:'Heating (heat-pump elec)', x:D.months, y:md.hp, marker:{color:'#ff6b6b'}},
     {type:'bar', name:'Grow lights', x:D.months, y:md.led, marker:{color:'#ffb454'}},
-    {type:'bar', name:'Hydroponic pump', x:D.months, y:md.hydro, marker:{color:'#9b7ede'}},
+    {type:'bar', name:'Dutch-bucket pump', x:D.months, y:md.hydro, marker:{color:'#9b7ede'}},
+    {type:'bar', name:'Herb NFT pump', x:D.months, y:md.nft_hydro, marker:{color:'#7cc6a5'}},
     {type:'bar', name:'Cooling (fan + pump elec)', x:D.months, y:md.cool, marker:{color:'#3ea6ff'}},
   ], Object.assign({}, LAY, {barmode:'stack',
      yaxis:ax({title:'electricity (kWh / month)', rangemode:'tozero'}),
@@ -368,7 +419,7 @@ Plotly.newPlot('envChart', [
   P.salsas.forEach(s=>document.getElementById(`salsa_${s.id}`).addEventListener('input',e=>{state.salsa[s.id]=+e.target.value;document.getElementById(`salsa_${s.id}_v`).textContent=e.target.value+'%';update();}));
   const selector=document.getElementById('pepperRecipe');selector.innerHTML=P.salsas.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');selector.addEventListener('change',()=>{renderPepperSliders();update();});
   function renderPepperSliders(){const rid=selector.value,prof=state.profiles[rid];document.getElementById('pepperSliders').innerHTML=P.pepperVarieties.map(v=>`<div class="slrow"><label>${v.name}</label><input type="range" id="pep_${v.id}" min="0" max="100" step="1" value="${prof[v.id]||0}"><span class="val" id="pep_${v.id}_v">${prof[v.id]||0}%</span></div>`).join('');P.pepperVarieties.forEach(v=>document.getElementById(`pep_${v.id}`).addEventListener('input',e=>{prof[v.id]=+e.target.value;document.getElementById(`pep_${v.id}_v`).textContent=e.target.value+'%';update();}));}
-  renderPepperSliders();document.getElementById('jarsWeek').addEventListener('input',update);document.getElementById('reservePct').addEventListener('input',update);
+  renderPepperSliders();['jarsWeek','reservePct','geomWidth','geomLength','geomWall','geomRise'].forEach(id=>document.getElementById(id).addEventListener('input',update));
   function update(){
     const [sw,ssum]=normalized(state.salsa);sumEl('salsaSum',ssum);sumEl('pepperSum',normalized(state.profiles[selector.value])[1]);
     const jars=Math.max(0,+document.getElementById('jarsWeek').value||0),reserve=1+Math.max(0,+document.getElementById('reservePct').value||0)/100;
@@ -376,7 +427,7 @@ Plotly.newPlot('envChart', [
     P.salsas.forEach(s=>{Object.keys(demand).forEach(k=>demand[k]+=52*jars*sw[s.id]*(s.ingredients[k]||0));const recipePep=52*jars*sw[s.id]*(s.ingredients.pepper||0),mix=normalized(state.profiles[s.id])[0];P.pepperVarieties.forEach(v=>pepKg[v.id]+=recipePep*mix[v.id]);});Object.keys(demand).forEach(k=>demand[k]*=reserve);Object.keys(pepKg).forEach(k=>pepKg[k]*=reserve);
     let rows=[],area=0,water=0,led=0,fruitPlants=0;['tomato','tomatillo','cilantro'].forEach(k=>{const c=P.cropCoefficients[k],n=Math.ceil(demand[k]/c.yield_kg);rows.push([c.name,demand[k],n,c.area_m2*n,c.water_Lyear*n]);area+=c.area_m2*n;water+=c.water_Lyear*n;led+=c.area_m2*n*c.light_factor*P.production.led_kwh_m2_year;if(k!=='cilantro')fruitPlants+=n;});
     P.pepperVarieties.forEach(v=>{let kg=pepKg[v.id],n=Math.ceil(kg/v.yield_kg);rows.push([v.name,kg,n,v.area_m2*n,v.water_Lyear*n]);area+=v.area_m2*n;water+=v.water_Lyear*n;led+=v.area_m2*n*v.light_factor*P.production.led_kwh_m2_year;fruitPlants+=n;});
-    window.currentCropPlan={area_m2:area,crop_water_Lyear:water,led_kwh_year:led,jars_per_week:jars,reserve_pct:(reserve-1)*100,salsa_weights:Object.assign({},state.salsa),pepper_profiles:JSON.parse(JSON.stringify(state.profiles))};
+    window.currentCropPlan={area_m2:area,crop_water_Lyear:water,led_kwh_year:led,jars_per_week:jars,reserve_pct:(reserve-1)*100,width_m:+document.getElementById('geomWidth').value||6,length_m:+document.getElementById('geomLength').value||6,wall_height_m:+document.getElementById('geomWall').value||2.4,roof_rise_m:+document.getElementById('geomRise').value||1.2,salsa_weights:Object.assign({},state.salsa),pepper_profiles:JSON.parse(JSON.stringify(state.profiles))};
     const siteWater=water+D.summary.improved.water;document.getElementById('cropCards').innerHTML=[['Greenhouse crop demand',area.toFixed(1),'m² canopy'],['Fruiting plants',fruitPlants,'tomato/tomatillo/pepper'],['Crop water',Math.round(water).toLocaleString(),'L / yr'],['Cooling + crop water',Math.round(siteWater).toLocaleString(),'L / yr'],['Lighting estimate',Math.round(led).toLocaleString(),'kWh / yr'],['Stored outdoor crops',(demand.onion+demand.garlic).toFixed(1),'kg onion + garlic / yr']].map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
     document.getElementById('cropTable').innerHTML='<thead><tr><th>Crop</th><th>kg/yr</th><th>sites/plants</th><th>m²</th><th>water L/yr</th></tr></thead><tbody>'+rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1].toFixed(1)}</td><td>${r[2]}</td><td>${r[3].toFixed(2)}</td><td>${Math.round(r[4])}</td></tr>`).join('')+'</tbody>';Plotly.react('cropChart',[{type:'bar',x:rows.map(r=>r[0]),y:rows.map(r=>r[3]),name:'Canopy area',marker:{color:'#37c871'}},{type:'scatter',x:rows.map(r=>r[0]),y:rows.map(r=>r[4]),name:'Water',yaxis:'y2',mode:'lines+markers',line:{color:'#3ea6ff'}}],Object.assign({},LAY,{yaxis:ax({title:'canopy area (m²)',rangemode:'tozero'}),yaxis2:ax({title:'water (L/year)',overlaying:'y',side:'right',showgrid:false,rangemode:'tozero'}),xaxis:ax({tickangle:-25}),margin:{l:60,r:60,t:34,b:100}}),CFG);
   }update();
@@ -393,7 +444,7 @@ Plotly.newPlot('envChart', [
       const response=await fetch('/api/recompute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentCropPlan)});
       const result=await response.json();if(!response.ok||result.status!=='ok')throw new Error(result.message||`server returned ${response.status}`);
       status.textContent=`Completed in ${((performance.now()-t0)/1000).toFixed(1)} s`;
-      const items=[['Total electricity',result.total_kwh.toLocaleString(),'kWh / yr'],['Heat-pump electricity',result.heatpump_kwh.toLocaleString(),'kWh / yr'],['Grow lights',result.growlight_kwh.toLocaleString(),'kWh / yr'],['Cooling electricity',result.cooling_kwh.toLocaleString(),'kWh / yr'],['Process water',result.total_process_water_L.toLocaleString(),'L / yr'],['Peak air',result.peak_air_C,'°C'],['Maximum RH',result.max_rh_pct,'%'],['Grid-tied PV',result.pv_grid_kw,'kW'],['Off-grid PV + battery',result.pv_off_kw+' kW',result.battery_kwh+' kWh battery']];
+      const items=[['Simulated geometry',result.geometry.width_m+' × '+result.geometry.length_m,'m footprint'],['Total electricity',result.total_kwh.toLocaleString(),'kWh / yr'],['Heat-pump electricity',result.heatpump_kwh.toLocaleString(),'kWh / yr'],['Grow lights',result.growlight_kwh.toLocaleString(),'kWh / yr'],['Cooling electricity',result.cooling_kwh.toLocaleString(),'kWh / yr'],['Process water',result.total_process_water_L.toLocaleString(),'L / yr'],['Peak air',result.peak_air_C,'°C'],['Maximum RH',result.max_rh_pct,'%'],['Grid-tied PV',result.pv_grid_kw,'kW'],['Off-grid PV + battery',result.pv_off_kw+' kW',result.battery_kwh+' kWh battery']];
       cards.innerHTML=items.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
     }catch(err){status.textContent=`Could not re-simulate: ${err.message}. Start dashboard/server.jl and open http://127.0.0.1:8080.`;status.style.color='#ffb454';}
     finally{button.disabled=false;button.style.opacity='1';}

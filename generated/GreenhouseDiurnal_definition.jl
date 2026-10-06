@@ -4,10 +4,8 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
-   GreenhouseDiurnal(; name, C_air, C_mass, G_mass, G_env, Gr, heater_max, k_ctrl, Ti_ctrl, T_cool_set, shade_max, mdot_evap_max, eta_pad, RH_max, k_cool, Ti_cool, P_atm, m_dry, beta_transp, G_infil, w_out, w0, A_grow, PPFD_set, PPFD_led_max, PPE_led, t_photo_start, t_photo_end, T_amb_mean, T_amb_amp, dT_sky, Q_solar_peak, t_daylight, T_set_night, T_set_day, T_year_amp, Q_year_amp, daylight_year_amp, t_year_peak, T_start)
+   GreenhouseDiurnal(; name, with_humidity_control, C_air, C_mass, G_mass, G_env, Gr, heater_max, k_ctrl, Ti_ctrl, T_cool_set, shade_max, mdot_evap_max, eta_pad, RH_max, k_cool, Ti_cool, P_atm, m_dry, beta_transp, G_infil, w_out, w0, RH_winter_set, RH_dehum_set, mdot_hrv_max, eta_hrv, P_hrv_fan_max, mdot_dehum_max, A_grow, PPFD_set, PPFD_led_max, PPE_led, t_photo_start, t_photo_end, T_amb_mean, T_amb_amp, dT_sky, Q_solar_peak, t_daylight, T_set_night, T_set_day, T_year_amp, Q_year_amp, daylight_year_amp, t_year_peak, T_start)
 
 Greenhouse thermal + moisture model over a diurnal cycle with heating and
 evaporative cooling (increment 4).
@@ -27,6 +25,7 @@ season or site.
 
 | Name         | Description                         | Units  |   Default value |
 | ------------ | ----------------------------------- | ------ | --------------- |
+| `with_humidity_control`         |                          | --  |   false |
 | `C_air`         |                          | J/K  |   3.84e4 |
 | `C_mass`         |                          | J/K  |   3.5e6 |
 | `G_mass`         |                          | W/K  |   50.0 |
@@ -48,6 +47,12 @@ season or site.
 | `G_infil`         | Baseline infiltration conductance for moisture exchange [W/K]                         | --  |   15.0 |
 | `w_out`         | Outdoor humidity ratio [kg/kg dry air]                         | --  |   0.006 |
 | `w0`         | Initial zone humidity ratio [kg/kg dry air]                         | --  |   0.006 |
+| `RH_winter_set`         |                          | --  |   0.75 |
+| `RH_dehum_set`         |                          | --  |   0.80 |
+| `mdot_hrv_max`         |                          | --  |   0.08 |
+| `eta_hrv`         |                          | --  |   0.80 |
+| `P_hrv_fan_max`         |                          | --  |   90.0 |
+| `mdot_dehum_max`         |                          | --  |   5e-5 |
 | `A_grow`         | Illuminated canopy area [m2]                         | --  |   12.0 |
 | `PPFD_set`         | Target PPFD during photoperiod [umol/(m2.s)]                         | --  |   380.0 |
 | `PPFD_led_max`         | Maximum supplemental LED PPFD [umol/(m2.s)]                         | --  |   380.0 |
@@ -67,7 +72,7 @@ season or site.
 | `t_year_peak`         |                          | s  |   16934400.0 |
 | `T_start`         |                          | K  |   288.15 |
 """
-@component function GreenhouseDiurnal(; name = nothing, C_air=Float64(38400.0), C_mass=Float64(3500000.0), G_mass=Float64(50.0), G_env=Float64(165.0), Gr=Float64(12.0), heater_max=Float64(15000.0), k_ctrl=Float64(3000.0), Ti_ctrl=Float64(300.0), T_cool_set=300.15, shade_max=0.6, mdot_evap_max=Float64(1.0), eta_pad=0.85, RH_max=0.8, k_cool=Float64(1.0), Ti_cool=Float64(600.0), P_atm=Float64(83000.0), m_dry=31.6, beta_transp=0.2, G_infil=Float64(15.0), w_out=0.006, w0=0.006, A_grow=Float64(12.0), PPFD_set=Float64(380.0), PPFD_led_max=Float64(380.0), PPE_led=2.7, t_photo_start=Float64(18000.0), t_photo_end=Float64(75600.0), T_amb_mean=262.15, T_amb_amp=Float64(7.0), dT_sky=Float64(20.0), Q_solar_peak=Float64(6000.0), t_daylight=Float64(43200.0), T_set_night=288.15, T_set_day=291.15, T_year_amp=Float64(0.0), Q_year_amp=Float64(0.0), daylight_year_amp=Float64(0.0), t_year_peak=Float64(16934400.0), T_start=288.15, kwargs...)
+@component function GreenhouseDiurnal(; name = nothing, with_humidity_control=false, C_air=Float64(38400.0), C_mass=Float64(3500000.0), G_mass=Float64(50.0), G_env=Float64(165.0), Gr=Float64(12.0), heater_max=Float64(15000.0), k_ctrl=Float64(3000.0), Ti_ctrl=Float64(300.0), T_cool_set=300.15, shade_max=0.6, mdot_evap_max=Float64(1.0), eta_pad=0.85, RH_max=0.8, k_cool=Float64(1.0), Ti_cool=Float64(600.0), P_atm=Float64(83000.0), m_dry=31.6, beta_transp=0.2, G_infil=Float64(15.0), w_out=0.006, w0=0.006, RH_winter_set=0.75, RH_dehum_set=0.8, mdot_hrv_max=0.08, eta_hrv=0.8, P_hrv_fan_max=Float64(90.0), mdot_dehum_max=0.00005, A_grow=Float64(12.0), PPFD_set=Float64(380.0), PPFD_led_max=Float64(380.0), PPE_led=2.7, t_photo_start=Float64(18000.0), t_photo_end=Float64(75600.0), T_amb_mean=262.15, T_amb_amp=Float64(7.0), dT_sky=Float64(20.0), Q_solar_peak=Float64(6000.0), t_daylight=Float64(43200.0), T_set_night=288.15, T_set_day=291.15, T_year_amp=Float64(0.0), Q_year_amp=Float64(0.0), daylight_year_amp=Float64(0.0), t_year_peak=Float64(16934400.0), T_start=288.15, kwargs...)
   isnothing(name) && throw(ArgumentError("""
     The `name` keyword must be provided. Please consider using the `@named` macro,
     like so:
@@ -161,6 +166,24 @@ season or site.
   __local__w0 = w0
   append!(__params, @parameters (w0::Real), [description = "Initial zone humidity ratio [kg/kg dry air]"])
   __initial_conditions[w0] = __local__w0
+  __local__RH_winter_set = RH_winter_set
+  append!(__params, @parameters (RH_winter_set::Real))
+  __initial_conditions[RH_winter_set] = __local__RH_winter_set
+  __local__RH_dehum_set = RH_dehum_set
+  append!(__params, @parameters (RH_dehum_set::Real))
+  __initial_conditions[RH_dehum_set] = __local__RH_dehum_set
+  __local__mdot_hrv_max = mdot_hrv_max
+  append!(__params, @parameters (mdot_hrv_max::Real))
+  __initial_conditions[mdot_hrv_max] = __local__mdot_hrv_max
+  __local__eta_hrv = eta_hrv
+  append!(__params, @parameters (eta_hrv::Real))
+  __initial_conditions[eta_hrv] = __local__eta_hrv
+  __local__P_hrv_fan_max = P_hrv_fan_max
+  append!(__params, @parameters (P_hrv_fan_max::Real))
+  __initial_conditions[P_hrv_fan_max] = __local__P_hrv_fan_max
+  __local__mdot_dehum_max = mdot_dehum_max
+  append!(__params, @parameters (mdot_dehum_max::Real))
+  __initial_conditions[mdot_dehum_max] = __local__mdot_dehum_max
   __local__A_grow = A_grow
   append!(__params, @parameters (A_grow::Real), [description = "Illuminated canopy area [m2]"])
   __initial_conditions[A_grow] = __local__A_grow
@@ -300,6 +323,21 @@ season or site.
   # Subcomponent moisture of type PersonalGreenhouse.MoistureZone
   moisture_overrides = __pop_subcomponent_overrides!(__overrides, "moisture")
   push!(__systems, @named moisture = PersonalGreenhouse.MoistureZone(; m_dry=m_dry, beta_transp=beta_transp, G_infil=G_infil, P_atm=P_atm, w0=w0, moisture_overrides...))
+  # Subcomponent humidity of type PersonalGreenhouse.WinterHumidityControl
+  humidity_overrides = __pop_subcomponent_overrides!(__overrides, "humidity")
+  if with_humidity_control
+    push!(__systems, @named humidity = PersonalGreenhouse.WinterHumidityControl(; RH_set=RH_winter_set, RH_dehum_set=RH_dehum_set, mdot_hrv_max=mdot_hrv_max, eta_sensible=eta_hrv, P_fan_max=P_hrv_fan_max, mdot_dehum_max=mdot_dehum_max, humidity_overrides...))
+  end
+  # Subcomponent humidity_heat of type ThermalComponents.Sources.PrescribedHeatFlow
+  humidity_heat_overrides = __pop_subcomponent_overrides!(__overrides, "humidity_heat")
+  if with_humidity_control
+    push!(__systems, @named humidity_heat = ThermalComponents.Sources.PrescribedHeatFlow(; humidity_heat_overrides...))
+  end
+  # Subcomponent moisture_control0 of type BlockComponents.Sources.Constant
+  moisture_control0_overrides = __pop_subcomponent_overrides!(__overrides, "moisture_control0")
+  if !with_humidity_control
+    push!(__systems, @named moisture_control0 = BlockComponents.Sources.Constant(; k=Float64(0.0), moisture_control0_overrides...))
+  end
 
   ### Check there are no unmatched overrides
   isempty(__overrides) || throw(ArgumentError("overrides: [$(join(keys(__overrides), ", "))] don't match names found in model. These names may exist in the model but could have been conditionally excluded."))
@@ -350,6 +388,23 @@ season or site.
   push!(__eqs, connect(solar_prod.y, moisture.Q_solar_shaded))
   push!(__eqs, connect(T_air.T, moisture.T_zone))
   push!(__eqs, connect(weather.w_out, moisture.w_out))
+
+  ### Control Structures
+  if with_humidity_control
+    push!(__eqs, connect(air.port, humidity_heat.port))
+  else
+  end
+  if with_humidity_control
+    push!(__eqs, connect(moisture.RH, humidity.RH_zone))
+    push!(__eqs, connect(moisture.w, humidity.w_zone))
+    push!(__eqs, connect(weather.w_out, humidity.w_out))
+    push!(__eqs, connect(T_air.T, humidity.T_zone))
+    push!(__eqs, connect(weather.T_ambient, humidity.T_out))
+    push!(__eqs, connect(humidity.mdot_moist, moisture.mdot_moist_control))
+    push!(__eqs, connect(humidity.Q_zone, humidity_heat.Q_flow))
+  else
+    push!(__eqs, connect(moisture_control0.y, moisture.mdot_moist_control))
+  end
 
   # Return completely constructed System
   return System(__eqs, t, __vars, __params; systems=__systems, initial_conditions=__initial_conditions, guesses=__guesses, name, initialization_eqs=__initialization_eqs, bindings=__bindings, assertions=__assertions)

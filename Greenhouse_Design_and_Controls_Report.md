@@ -158,6 +158,45 @@ Current modeled assumptions:
 
 The lighting controller supplies only the deficit between natural canopy PPFD and the target. Nearly all LED electricity eventually becomes greenhouse heat, reducing winter heating but increasing summer cooling.
 
+
+### 3.5 Geometry- and crop-specific annual validation
+
+The aggregate area-scaling model has been replaced by an explicit 6 m × 6 m pitched-roof geometry and crop-group loading. Default parameters are:
+
+| Geometry/crop parameter | Value |
+|---|---:|
+| Floor area | 36.0 m² |
+| Wall height / roof rise | 2.4 m / 1.2 m |
+| Roof area | 38.77 m² |
+| Transparent envelope area | 78.37 m² |
+| Insulated north wall | 18.0 m² |
+| Internal volume | 108.0 m³ |
+| Envelope conductance | 157.93 W/K |
+| Effective radiation factor | 16.55 m²-equivalent |
+| Peak effective solar gain | 9.01 kW |
+| Installed / active crop canopy | 21.87 / 19.70 m² |
+| Weighted PPFD target | 389 µmol/m²/s |
+| Weighted transpiration fraction | 0.214 |
+
+The synthesized-year solve completed with the following default-portfolio results:
+
+| Annual result | Geometry/crop model |
+|---|---:|
+| Heating thermal energy | 13,737 kWh |
+| Heat-pump electricity | 5,095 kWh |
+| Supplemental LED electricity | 6,877 kWh |
+| Evaporative-cooling electricity | 242 kWh |
+| Both hydroponic pumps | 146 kWh |
+| **Total modeled electricity** | **12,360 kWh/year** |
+| Evaporative-cooling water | 7,022 L/year |
+| Peak heating demand | 9.02 kW thermal |
+| Controlled temperature range | 14.76–27.01 °C |
+| Preliminary grid-tied PV | 8.4 kW |
+| Preliminary off-grid PV / battery | 22.6 kW / 112 kWh |
+
+These values supersede the earlier 12 m² headline estimate. Grow lighting is now the largest electrical load because the accepted portfolio nearly doubles active canopy. The maximum modeled winter RH remains near saturation, reinforcing the need for condensation management or heat-recovery dehumidification in detailed design.
+
+
 ---
 
 ## 4. Hydroponic system
@@ -167,7 +206,45 @@ The lighting controller supplies only the deficit between natural canopy PPFD an
 - **Tomatoes and peppers:** recirculating drip-fed Dutch buckets with vertical trellising.
 - **Cilantro and compact herbs:** a separate NFT loop, to avoid forcing fruiting crops and herbs to share nutrient strength and root-zone conditions.
 
-### 4.2 Modeled Dutch-bucket loop
+### 4.2 Portfolio-sized fruiting loop and preliminary layout
+
+The default four-jars/week portfolio estimates 36 fruiting plants and approximately 21.2 m² of productive canopy. The resized hydraulic concept uses:
+
+- 36 Dutch buckets split into three balanced 12-emitter manifolds.
+- A 200 L-class fruiting-crop reservoir.
+- A 16 mm-ID, approximately 8 m main supply trunk.
+- Three 10 mm-ID, approximately 2 m branch lines with isolation/balancing valves.
+- One inertial liquid-column state per branch to represent manifold redistribution.
+- A pump sized for roughly **1.2–1.8 L/min total flow** at the required head, with additional fouling margin.
+
+A practical preliminary greenhouse footprint is **6 m × 6 m (36 m²)**. One conceptual allocation is:
+
+| Area use | Approximate allocation |
+|---|---:|
+| Fruiting crop canopy/trellis footprint | 21–23 m² |
+| Two NFT channels and herb service area | 2–3 m² |
+| Central and cross aisles | 7–8 m² |
+| Reservoirs, controls, dosing and HVAC service | 3–4 m² |
+| Remaining clearance/flex area | 1–3 m² |
+
+Place the insulated service/north wall on the north side with reservoirs, controls, heat pump interfaces and nutrient storage along it. Arrange three 12-plant trellised Dutch-bucket manifolds as north–south crop rows so their balancing valves remain accessible from an aisle. Mount the two NFT herb channels near the cooler north/service side, stacked only if both tiers can receive measured PPFD and service access.
+
+This is a layout basis rather than a construction drawing. Final spacing must use selected cultivars, trellis method, local structural/snow code, door/egress requirements, and actual HVAC clearances.
+
+The compiled three-manifold model was tuned to 92% pump speed and validated at:
+
+| Portfolio-sized hydraulic metric | Result |
+|---|---:|
+| Total flow | 1.302 L/min |
+| Per-plant delivery | 2.169 L/h |
+| Branch imbalance | < 2×10⁻¹³% |
+| Pump head | 4.303 m |
+| Pump electrical power | 9.88 W |
+| Continuous annual pump electricity | 86.6 kWh |
+| Pressure-balance residual | 7.3×10⁻¹² Pa |
+| Reservoir net circulation flow | 0 kg/s |
+
+### 4.3 Original 12-bucket hydraulic reference
 
 | Metric | Result |
 |---|---:|
@@ -185,9 +262,34 @@ The lighting controller supplies only the deficit between natural canopy PPFD an
 
 The hydraulic pressure and mass balances close numerically. The tank level and concentration remain at their targets under the idealized top-off and dosing controls.
 
-### 4.3 Emitter and pump warning
+### 4.4 Emitter and pump warning
 
 The hydraulic model assumes **low-pressure emitters delivering about 2 L/h at approximately 10 kPa (0.1 bar)**. Many commercial pressure-compensating emitters require approximately 100 kPa. Substituting a conventional 1-bar emitter would increase required pump head from roughly 4 m to more than 12 m.
+
+### 4.5 Separate cilantro/herb NFT loop
+
+A separate nutrient loop was modeled for cilantro and compact herbs:
+
+| Metric | Modeled result |
+|---|---:|
+| Channels | 2 parallel channels |
+| Channel length / sites | 2 m / 7 sites each |
+| Total NFT positions | 14 |
+| Succession occupancy | 7–14 active sites |
+| Planting cycle | 30 days, 28 days occupied |
+| Flow per channel | 0.607 L/min |
+| Operating film depth | 5.90 mm |
+| Reservoir | approximately 50 L |
+| Herb nutrient target | 1.5 g/kg solution proxy |
+| Annual herb water withdrawal | 432.6 L |
+| Annual pure-water top-off | 432.3 L |
+| Annual nutrient-stock solution | 0.346 L |
+| Annual NFT pump electricity | 59.6 kWh |
+
+The channel model includes liquid holdup as a state. At shutdown, the 4 mm nominal film reaches the 1 mm dry-alarm threshold after 96 seconds and drains to empty in approximately 192 seconds. Nominal flow and holdup mass match their independent calculations, and the annual water/nutrient balances close within integration tolerance.
+
+The model identified an important numerical formulation issue: directly solving the quadratic inlet restriction at zero pressure produced a nearly flat algebraic equation. Explicitly inverting the restriction to mass flow and blocking reverse flow removed that conditioning problem. The final annual NFT model uses an implicit solver because it combines fast pipe/channel dynamics with month-long succession cycles and annual nutrient balances.
+
 
 Before ordering:
 
@@ -196,7 +298,7 @@ Before ordering:
 3. Re-run the hydraulic model with those curves.
 4. Select a pump with margin for filter fouling, root intrusion, branch imbalance, and piping changes.
 
-A practical target is approximately 0.6–0.8 L/min at 4 m head, regulated down by speed control or bypass. Keep an identical spare pump.
+For the portfolio-sized 36-bucket loop, target approximately 1.2–1.8 L/min total flow at the required head, regulated by speed control or bypass. Keep an identical spare pump. The earlier 0.6–0.8 L/min target applied only to the 12-bucket reference.
 
 ---
 
@@ -283,7 +385,8 @@ Recommended temperature/RH locations: low zone, canopy, high zone, and outdoors 
 
 | Qty. | Item | Recommended specification | Budget |
 |---:|---|---|---:|
-| 1 | Main pump | 24 VDC BLDC; target 0.6–0.8 L/min at 4 m head | $80–250 |
+| 1 | Main fruiting-loop pump | 24 VDC BLDC; target 1.2–1.8 L/min at required head | $100–300 |
+| 1 | Herb NFT pump | 24 VDC BLDC; approximately 1.2 L/min total at required head | $60–200 |
 | 1 | Spare pump | Identical, stored dry and tested periodically | $80–250 |
 | 1 | Supply flow meter | Approximately 0.05–2 L/min | $100–300 |
 | 1 | Return-flow switch | Independent proof of return | $30–100 |

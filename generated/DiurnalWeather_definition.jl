@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    DiurnalWeather(; name, day_period, T_amb_mean, T_amb_amp, t_amb_peak, dT_sky, Q_solar_peak, t_solar_noon, t_daylight, T_set_night, T_set_day, w_out_val, year_period, T_year_amp, Q_year_amp, daylight_year_amp, t_year_peak)
 

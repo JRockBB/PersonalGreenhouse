@@ -205,6 +205,14 @@ component GreenhouseDiurnal
   parameter w_out::Real = 0.006
   "Initial zone humidity ratio [kg/kg dry air]"
   parameter w0::Real = 0.006
+  # ---- Winter humidity control ----------------------------------------------
+  structural parameter with_humidity_control::Boolean = false
+  parameter RH_winter_set::Real = 0.75
+  parameter RH_dehum_set::Real = 0.80
+  parameter mdot_hrv_max::Real = 0.08
+  parameter eta_hrv::Real = 0.80
+  parameter P_hrv_fan_max::Real = 90.0
+  parameter mdot_dehum_max::Real = 5e-5
   # ---- Supplemental grow lighting ------------------------------------------
   "Illuminated canopy area [m2]"
   parameter A_grow::Real = 12.0
@@ -272,6 +280,12 @@ component GreenhouseDiurnal
   evap = EvaporativeCooler(mdot_max=mdot_evap_max, eta_pad=eta_pad, P_atm=P_atm, RH_max=RH_max)
   evap_heat = ThermalComponents.Sources.PrescribedHeatFlow()
   moisture = MoistureZone(m_dry=m_dry, beta_transp=beta_transp, G_infil=G_infil, P_atm=P_atm, w0=w0)
+  humidity = WinterHumidityControl(RH_set=RH_winter_set,
+    RH_dehum_set=RH_dehum_set, mdot_hrv_max=mdot_hrv_max,
+    eta_sensible=eta_hrv, P_fan_max=P_hrv_fan_max,
+    mdot_dehum_max=mdot_dehum_max) if with_humidity_control
+  humidity_heat = ThermalComponents.Sources.PrescribedHeatFlow() if with_humidity_control
+  moisture_control0 = BlockComponents.Sources.Constant(k=0.0) if !with_humidity_control
 relations
   # thermal network
   connect(mass.port, mass_coupling.port_a)
@@ -285,6 +299,9 @@ relations
   connect(air.port, evap_heat.port)
   connect(air.port, led_heat.port)
   connect(air.port, T_air.port)
+  if with_humidity_control
+    connect(air.port, humidity_heat.port)
+  end
   # weather -> boundary conditions
   connect(weather.T_ambient, ambient.T)
   connect(weather.T_sky, sky.T)
@@ -320,6 +337,17 @@ relations
   connect(solar_prod.y, moisture.Q_solar_shaded)
   connect(T_air.T, moisture.T_zone)
   connect(weather.w_out, moisture.w_out)
+  if with_humidity_control
+    connect(moisture.RH, humidity.RH_zone)
+    connect(moisture.w, humidity.w_zone)
+    connect(weather.w_out, humidity.w_out)
+    connect(T_air.T, humidity.T_zone)
+    connect(weather.T_ambient, humidity.T_out)
+    connect(humidity.mdot_moist, moisture.mdot_moist_control)
+    connect(humidity.Q_zone, humidity_heat.Q_flow)
+  else
+    connect(moisture_control0.y, moisture.mdot_moist_control)
+  end
 end
 
 analysis GreenhouseDiurnalTest

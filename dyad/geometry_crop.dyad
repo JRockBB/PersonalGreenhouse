@@ -1,0 +1,190 @@
+"""
+Parameter set for a rectangular greenhouse with a symmetric pitched roof.
+
+The north gable wall is opaque/insulated; the roof and the remaining walls are
+transparent. Envelope conductance is calculated from actual surface areas,
+material U-values and infiltration air changes. The radiation factor includes
+roof plus a parameterized fraction of transparent wall area and a night-curtain
+reduction. These derived parameters feed the existing lumped thermal model.
+"""
+component GreenhouseGeometry
+  "East-west greenhouse width [m]"
+  parameter width::Length = 6.0
+  "North-south greenhouse length [m]"
+  parameter length::Length = 6.0
+  "Vertical eave/wall height [m]"
+  parameter wall_height::Length = 2.4
+  "Roof rise from eave to ridge [m]"
+  parameter roof_rise::Length = 1.2
+  "Transparent-envelope U-value [W/(m2.K)]"
+  parameter U_glazing::Real = 1.8
+  "Insulated north-wall U-value [W/(m2.K)]"
+  parameter U_north::Real = 0.35
+  "Air changes per hour"
+  parameter ACH::Real = 0.35
+  "Indoor-air density [kg/m3]"
+  parameter rho_air::Real = 1.0
+  "Indoor-air specific heat [J/(kg.K)]"
+  parameter cp_air::Real = 1006.0
+  "Effective long-wave emissivity"
+  parameter emissivity::Real = 0.85
+  "Transparent-wall view factor to sky"
+  parameter wall_sky_fraction::Real = 0.25
+  "Night-curtain long-wave transmission (0 opaque, 1 open)"
+  parameter curtain_ir_factor::Real = 0.40
+  "Effective solar transmittance times canopy utilization"
+  parameter solar_utilization::Real = 0.3575
+  "Peak exterior plane-of-array irradiance [W/m2]"
+  parameter irradiance_peak::Real = 700.0
+
+  final parameter roof_slope::Length = sqrt((width/2)^2 + roof_rise^2)
+  final parameter A_floor::Area = width * length
+  final parameter A_roof::Area = 2 * length * roof_slope
+  final parameter A_walls::Area = 2 * (width + length) * wall_height
+  final parameter A_north::Area = width * wall_height + width * roof_rise / 2
+  final parameter A_transparent::Area = A_roof + A_walls - A_north
+  final parameter volume::Volume = A_floor * wall_height + A_floor * roof_rise / 2
+  final parameter G_conduction::Real = U_glazing*A_transparent + U_north*A_north
+  final parameter G_infiltration::Real = rho_air*cp_air*volume*ACH/3600
+  final parameter G_envelope::Real = G_conduction + G_infiltration
+  final parameter Gr_effective::Real = emissivity *
+    (A_roof + wall_sky_fraction*(A_transparent - A_roof)) * curtain_ir_factor
+  final parameter Q_solar_peak::Real = irradiance_peak * A_floor * solar_utilization
+relations
+end
+
+"""
+Aggregate crop-group loading for the default salsa portfolio.
+
+Tomatoes, tomatillos, peppers and cilantro retain separate area, occupancy,
+light and transpiration coefficients. Their weighted sums produce the effective
+canopy area, PPFD target and latent fraction used by the single-zone physical
+model. Occupancy parameters make growth/harvest schedules overridable without
+changing the greenhouse geometry.
+"""
+component CropGroupLoads
+  parameter A_tomato::Area = 6.75
+  parameter A_tomatillo::Area = 8.0
+  parameter A_pepper::Area = 6.60
+  parameter A_cilantro::Area = 0.52
+  parameter occupancy_tomato::Real = 0.90
+  parameter occupancy_tomatillo::Real = 0.90
+  parameter occupancy_pepper::Real = 0.90
+  parameter occupancy_cilantro::Real = 0.93
+  parameter PPFD_tomato::Real = 400.0
+  parameter PPFD_tomatillo::Real = 380.0
+  parameter PPFD_pepper::Real = 400.0
+  parameter PPFD_cilantro::Real = 250.0
+  parameter beta_tomato::Real = 0.24
+  parameter beta_tomatillo::Real = 0.21
+  parameter beta_pepper::Real = 0.20
+  parameter beta_cilantro::Real = 0.10
+
+  final parameter A_tomato_active::Area = A_tomato*occupancy_tomato
+  final parameter A_tomatillo_active::Area = A_tomatillo*occupancy_tomatillo
+  final parameter A_pepper_active::Area = A_pepper*occupancy_pepper
+  final parameter A_cilantro_active::Area = A_cilantro*occupancy_cilantro
+  final parameter A_active::Area = A_tomato_active + A_tomatillo_active +
+    A_pepper_active + A_cilantro_active
+  final parameter A_installed::Area = A_tomato + A_tomatillo + A_pepper + A_cilantro
+  final parameter PPFD_effective::Real =
+    (A_tomato_active*PPFD_tomato + A_tomatillo_active*PPFD_tomatillo +
+     A_pepper_active*PPFD_pepper + A_cilantro_active*PPFD_cilantro) / A_active
+  final parameter beta_effective::Real =
+    (A_tomato_active*beta_tomato + A_tomatillo_active*beta_tomatillo +
+     A_pepper_active*beta_pepper + A_cilantro_active*beta_cilantro) / A_active
+relations
+end
+
+"""
+Geometry- and crop-specific annual greenhouse model for the default portfolio.
+
+The component derives physical envelope/solar parameters from the 6 x 6 m
+pitched-roof geometry and crop loads from the crop-group parameter set, then
+passes those values into the validated thermal/moisture/control model.
+"""
+component PortfolioGreenhouseAnnual
+  # Geometry parameters
+  parameter width::Length = 6.0
+  parameter length::Length = 6.0
+  parameter wall_height::Length = 2.4
+  parameter roof_rise::Length = 1.2
+  parameter U_glazing::Real = 1.8
+  parameter U_north::Real = 0.35
+  parameter ACH::Real = 0.35
+  parameter rho_air::Real = 1.0
+  parameter cp_air::Real = 1006.0
+  parameter emissivity::Real = 0.85
+  parameter wall_sky_fraction::Real = 0.25
+  parameter curtain_ir_factor::Real = 0.40
+  parameter solar_utilization::Real = 0.3575
+  parameter irradiance_peak::Real = 700.0
+  # Crop-group areas and occupancy
+  parameter A_tomato::Area = 6.75
+  parameter A_tomatillo::Area = 8.0
+  parameter A_pepper::Area = 6.60
+  parameter A_cilantro::Area = 0.52
+  parameter occupancy_tomato::Real = 0.90
+  parameter occupancy_tomatillo::Real = 0.90
+  parameter occupancy_pepper::Real = 0.90
+  parameter occupancy_cilantro::Real = 0.93
+  parameter PPFD_tomato::Real = 400.0
+  parameter PPFD_tomatillo::Real = 380.0
+  parameter PPFD_pepper::Real = 400.0
+  parameter PPFD_cilantro::Real = 250.0
+  parameter beta_tomato::Real = 0.24
+  parameter beta_tomatillo::Real = 0.21
+  parameter beta_pepper::Real = 0.20
+  parameter beta_cilantro::Real = 0.10
+  # Derived geometry
+  final parameter roof_slope::Length = sqrt((width/2)^2 + roof_rise^2)
+  final parameter A_floor::Area = width*length
+  final parameter A_roof::Area = 2*length*roof_slope
+  final parameter A_walls::Area = 2*(width+length)*wall_height
+  final parameter A_north::Area = width*wall_height + width*roof_rise/2
+  final parameter A_transparent::Area = A_roof + A_walls - A_north
+  final parameter volume::Volume = A_floor*wall_height + A_floor*roof_rise/2
+  final parameter G_infiltration::Real = rho_air*cp_air*volume*ACH/3600
+  final parameter G_envelope::Real = U_glazing*A_transparent + U_north*A_north + G_infiltration
+  final parameter Gr_effective::Real = emissivity*(A_roof + wall_sky_fraction*(A_transparent-A_roof))*curtain_ir_factor
+  final parameter Q_solar_geometry::Real = irradiance_peak*A_floor*solar_utilization
+  # Derived crop loading
+  final parameter A_tomato_active::Area = A_tomato*occupancy_tomato
+  final parameter A_tomatillo_active::Area = A_tomatillo*occupancy_tomatillo
+  final parameter A_pepper_active::Area = A_pepper*occupancy_pepper
+  final parameter A_cilantro_active::Area = A_cilantro*occupancy_cilantro
+  final parameter A_active::Area = A_tomato_active+A_tomatillo_active+A_pepper_active+A_cilantro_active
+  final parameter PPFD_effective::Real = (A_tomato_active*PPFD_tomato+A_tomatillo_active*PPFD_tomatillo+A_pepper_active*PPFD_pepper+A_cilantro_active*PPFD_cilantro)/A_active
+  final parameter beta_effective::Real = (A_tomato_active*beta_tomato+A_tomatillo_active*beta_tomatillo+A_pepper_active*beta_pepper+A_cilantro_active*beta_cilantro)/A_active
+  # Thermal/control parameters
+  parameter air_capacity_factor::Real = 1.0
+  parameter mass_capacity_per_area::Real = 100000.0
+  parameter mass_coupling_per_area::Real = 2.0
+  parameter heater_max::Real = 15000.0
+  parameter mdot_evap_max::Real = 1.5
+  parameter T_start::Temperature = 288.15
+
+  greenhouse = GreenhouseDiurnal(
+    C_air=rho_air*cp_air*volume*air_capacity_factor,
+    C_mass=mass_capacity_per_area*A_floor,
+    G_mass=mass_coupling_per_area*A_floor,
+    G_env=G_envelope, Gr=Gr_effective,
+    heater_max=heater_max, mdot_evap_max=mdot_evap_max,
+    with_humidity_control=true, RH_winter_set=0.75,
+    RH_dehum_set=0.80, mdot_hrv_max=0.08,
+    eta_hrv=0.80, P_hrv_fan_max=90.0, mdot_dehum_max=5e-5,
+    m_dry=rho_air*volume, beta_transp=beta_effective,
+    G_infil=G_infiltration, A_grow=A_active,
+    PPFD_set=PPFD_effective, PPFD_led_max=PPFD_effective,
+    T_amb_mean=283.15, T_amb_amp=8.0, T_year_amp=12.0, dT_sky=18.0,
+    Q_solar_peak=Q_solar_geometry, Q_year_amp=0.30*Q_solar_geometry,
+    t_daylight=43200.0, daylight_year_amp=9000.0,
+    T_set_night=288.15, T_set_day=291.15,
+    w_out=0.006, w0=0.006, T_start=T_start)
+relations
+end
+
+analysis PortfolioGreenhouseAnnualTest
+  extends TransientAnalysis(stop=31536000.0, alg=ODEAlg.AutoImplicit(), abstol=1e-4, reltol=1e-4)
+  model = PortfolioGreenhouseAnnual()
+end

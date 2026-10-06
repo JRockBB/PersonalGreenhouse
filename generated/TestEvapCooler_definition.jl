@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    TestEvapCooler(; name, C_air)
 
@@ -94,6 +92,9 @@ humidity ratio.
   # Subcomponent Qsolar0 of type BlockComponents.Sources.Constant
   Qsolar0_overrides = __pop_subcomponent_overrides!(__overrides, "Qsolar0")
   push!(__systems, @named Qsolar0 = BlockComponents.Sources.Constant(; k=Float64(0.0), Qsolar0_overrides...))
+  # Subcomponent moisture_control0 of type BlockComponents.Sources.Constant
+  moisture_control0_overrides = __pop_subcomponent_overrides!(__overrides, "moisture_control0")
+  push!(__systems, @named moisture_control0 = BlockComponents.Sources.Constant(; k=Float64(0.0), moisture_control0_overrides...))
 
   ### Check there are no unmatched overrides
   isempty(__overrides) || throw(ArgumentError("overrides: [$(join(keys(__overrides), ", "))] don't match names found in model. These names may exist in the model but could have been conditionally excluded."))
@@ -115,6 +116,7 @@ humidity ratio.
   push!(__eqs, connect(moisture.w, evap.w_zone))
   push!(__eqs, connect(T_air.T, evap.T_zone))
   push!(__eqs, connect(evap.mdot_moist, moisture.mdot_moist_evap))
+  push!(__eqs, connect(moisture_control0.y, moisture.mdot_moist_control))
   push!(__eqs, connect(T_air.T, moisture.T_zone))
   push!(__eqs, connect(wout.y, moisture.w_out))
   push!(__eqs, connect(Qsolar0.y, moisture.Q_solar_shaded))

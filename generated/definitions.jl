@@ -6,7 +6,6 @@
 
 using ModelingToolkit
 import Markdown
-import Moshi
 using ModelingToolkit: t_nounits as t
 using OrdinaryDiffEqDefault
 using RuntimeGeneratedFunctions
@@ -201,15 +200,20 @@ component.
 end
 
 
+include("AlgebraicTube_definition.jl")
+include("CondensingGlazing_definition.jl")
+include("CropGroupLoads_definition.jl")
 include("CropWaterDemand_definition.jl")
 include("DiurnalWeather_definition.jl")
 include("DutchBucketAnnualTest_definition.jl")
 include("DutchBucketBank_definition.jl")
+include("DutchBucketLoop36_definition.jl")
 include("DutchBucketSystem_definition.jl")
 include("EvaporativeCooler_definition.jl")
 include("GreenhouseAnnualTest_definition.jl")
 include("GreenhouseDiurnalTest_definition.jl")
 include("GreenhouseDiurnal_definition.jl")
+include("GreenhouseGeometry_definition.jl")
 include("GreenhouseNightTest_definition.jl")
 include("GreenhouseNight_definition.jl")
 include("GreenhouseSummerTest_definition.jl")
@@ -221,9 +225,15 @@ include("HerbSuccessionDemand_definition.jl")
 include("MoistureZone_definition.jl")
 include("NFTChannelBank_definition.jl")
 include("OpenReservoir_definition.jl")
+include("PortfolioGreenhouseAnnualTest_definition.jl")
+include("PortfolioGreenhouseAnnual_definition.jl")
 include("PrescribedFlowSink_definition.jl")
 include("RecirculationPump_definition.jl")
 include("ReservoirManager_definition.jl")
+include("TestCondensingGlazingRun_definition.jl")
+include("TestCondensingGlazing_definition.jl")
+include("TestDutchBucketLoop36Run_definition.jl")
+include("TestDutchBucketLoop36_definition.jl")
 include("TestDutchBucketLoopNoDemand_definition.jl")
 include("TestDutchBucketLoopRun_definition.jl")
 include("TestDutchBucketLoop_definition.jl")
@@ -241,4 +251,9 @@ include("TestRecirculationPumpRun_definition.jl")
 include("TestRecirculationPump_definition.jl")
 include("TestReservoirManagerRun_definition.jl")
 include("TestReservoirManager_definition.jl")
+include("TestWinterHumidityControlBackupRun_definition.jl")
+include("TestWinterHumidityControlBackup_definition.jl")
+include("TestWinterHumidityControlRun_definition.jl")
+include("TestWinterHumidityControl_definition.jl")
+include("WinterHumidityControl_definition.jl")
 include("World_definition.jl")

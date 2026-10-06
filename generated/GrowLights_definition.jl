@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    GrowLights(; name, A_grow, PPFD_set, PPFD_led_max, PPE_led, PAR_frac, umol_per_J, t_photo_start, t_photo_end)
 

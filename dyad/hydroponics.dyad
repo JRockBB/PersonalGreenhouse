@@ -580,6 +580,8 @@ component NFTChannelBank
   final parameter plan_area::Real = n_channels * channel_width * channel_length
   final parameter mass_nom::Real = rho * plan_area * depth_nom
   final parameter K_drain::Real = target_total_m / sqrt(depth_nom)
+  "Initial channel inlet flow (used when coupled to an inertial supply pipe)"
+  parameter m_flow0::MassFlowRate = target_total_m
   variable mass_hold::Mass
   variable depth::Length
   variable m_in::MassFlowRate
@@ -746,7 +748,7 @@ component HerbNFTSystem
     eta=0.22, P_idle=5.0, rho=rho)
   supply = HydraulicComponents.Pipes.TubeBase(area=area, length=3.0,
     perimeter=perimeter, shape_factor=64.0, head_factor=1.5,
-    add_inertia=true, m_flow0=0.0)
+    add_inertia=true, m_flow0=0.0166333333)
   channels = NFTChannelBank(n_channels=2.0, sites_per_channel=7.0,
     channel_length=2.0, channel_width=0.10, slope=0.025,
     lift=1.5, target_flow_Lmin=0.50, dp_inlet_nom=3000.0,
@@ -783,6 +785,119 @@ analysis HerbNFTAnnualTest
   extends TransientAnalysis(stop=31536000.0, alg=ODEAlg.AutoImplicit(), abstol=1e-6, reltol=1e-6)
   model = HerbNFTSystem()
 end
+
+"""
+Algebraic hydraulic tube for a manifold trunk whose downstream branch pipes
+already provide all required fluid-inertia states.
+
+This is the stdlib `TubeBase` friction relationship without its unconditional
+initial-flow equation. `TubeBase` adds `initial m_flow=m_flow0` even when
+`add_inertia=false`; in a parallel manifold that overconstrains initialization
+because branch initial flows already determine trunk flow through KCL.
+"""
+component AlgebraicTube
+  extends HydraulicComponents.Interfaces.TwoPorts
+  "Equivalent quadratic pressure-loss coefficient [Pa/(kg/s)^2]"
+  parameter K_loss::Real
+  "Reverse-flow resistance multiplier"
+  parameter reverse_factor::Real = 10000.0
+  "Flow smoothing scale [kg/s]"
+  parameter m_eps::MassFlowRate = 1e-8
+  variable flow_term::Real
+relations
+  m_flow = port_a.m_flow
+  flow_term = ifelse(m_flow >= 0,
+    m_flow * sqrt(m_flow^2 + m_eps^2),
+    reverse_factor * m_flow * sqrt(m_flow^2 + m_eps^2))
+  Δp = K_loss * flow_term
+end
+
+
+"""
+Three-manifold Dutch-bucket loop sized for the default salsa portfolio.
+
+Thirty-six fruiting plants are divided into three hydraulically identical
+12-emitter branches. An inertial 16 mm-ID trunk feeds three equal 10 mm-ID
+branch pipes; each branch has its own low-pressure emitter bank and isolation /
+balancing path. The 200 L reservoir and external-flow input support the same
+level/nutrient manager used by the smaller loop.
+"""
+component DutchBucketLoop36
+  "Managed external reservoir flow [kg/s]"
+  m_flow_external = RealInput()
+  parameter rho::Density = 998.0
+  "Pump fractional-speed command"
+  parameter pump_speed::Real = 0.92
+  "Main supply length [m]"
+  parameter trunk_length::Length = 8.0
+  "Equal branch length [m]"
+  parameter branch_length::Length = 2.0
+  parameter trunk_diameter::Length = 0.016
+  parameter branch_diameter::Length = 0.010
+  final parameter trunk_area::Area = pi * trunk_diameter^2 / 4
+  final parameter trunk_perimeter::Length = pi * trunk_diameter
+  "Equivalent trunk loss calibrated to 4 kPa at 1.2 L/min"
+  final parameter K_trunk::Real = 4000.0 / (0.01996^2)
+  final parameter branch_area::Area = pi * branch_diameter^2 / 4
+  final parameter branch_perimeter::Length = pi * branch_diameter
+
+  tank = OpenReservoir(A_tank=0.50, level0=0.40, level_max=0.48,
+    h_outlet=0.05, p_atm=83000.0, rho=rho)
+  pump = RecirculationPump(dp_shutoff=58800.0, m_flow_free=0.060,
+    eta=0.25, P_idle=8.0, rho=rho)
+  trunk = AlgebraicTube(K_loss=K_trunk)
+  # Each branch includes its own fluid inertia, representing the real liquid
+  # columns and giving branch redistribution a physical state.
+  branch1 = HydraulicComponents.Pipes.TubeBase(area=branch_area,
+    length=branch_length, perimeter=branch_perimeter, shape_factor=64.0,
+    head_factor=2.0, add_inertia=true, m_flow0=0.006666666667)
+  branch2 = HydraulicComponents.Pipes.TubeBase(area=branch_area,
+    length=branch_length, perimeter=branch_perimeter, shape_factor=64.0,
+    head_factor=2.0, add_inertia=true, m_flow0=0.006666666667)
+  branch3 = HydraulicComponents.Pipes.TubeBase(area=branch_area,
+    length=branch_length, perimeter=branch_perimeter, shape_factor=64.0,
+    head_factor=2.0, add_inertia=true, m_flow0=0.006666666667)
+  bank1 = DutchBucketBank(n_emitters=12.0, lift=2.5,
+    q_emitter_nom_Lph=2.0, dp_emitter_nom=10000.0,
+    q_target_Lph=2.0, rho=rho)
+  bank2 = DutchBucketBank(n_emitters=12.0, lift=2.5,
+    q_emitter_nom_Lph=2.0, dp_emitter_nom=10000.0,
+    q_target_Lph=2.0, rho=rho)
+  bank3 = DutchBucketBank(n_emitters=12.0, lift=2.5,
+    q_emitter_nom_Lph=2.0, dp_emitter_nom=10000.0,
+    q_target_Lph=2.0, rho=rho)
+  speed = BlockComponents.Sources.Constant(k=pump_speed)
+  path medium::HydraulicComponents.Interfaces.AbstractMedium = HydraulicComponents.IsothermalCompressible(
+    bulk_modulus=2.2e9, let_gas=false, density=998.0, viscosity=0.001)
+relations
+  connect(tank.port, pump.port_a)
+  connect(pump.port_b, trunk.port_a)
+  connect(trunk.port_b, branch1.port_a)
+  connect(trunk.port_b, branch2.port_a)
+  connect(trunk.port_b, branch3.port_a)
+  connect(branch1.port_b, bank1.port_a)
+  connect(branch2.port_b, bank2.port_a)
+  connect(branch3.port_b, bank3.port_a)
+  connect(bank1.port_b, tank.port)
+  connect(bank2.port_b, tank.port)
+  connect(bank3.port_b, tank.port)
+  connect(speed.y, pump.command)
+  connect(m_flow_external, tank.m_flow_external)
+  continuity(medium, tank.port.medium)
+end
+
+component TestDutchBucketLoop36
+  loop = DutchBucketLoop36()
+  zero = BlockComponents.Sources.Constant(k=0.0)
+relations
+  connect(zero.y, loop.m_flow_external)
+end
+
+analysis TestDutchBucketLoop36Run
+  extends TransientAnalysis(stop=20.0, alg=ODEAlg.Tsit5(), abstol=1e-7, reltol=1e-7)
+  model = TestDutchBucketLoop36()
+end
+
 
 
 

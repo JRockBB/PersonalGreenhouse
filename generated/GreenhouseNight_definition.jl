@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    GreenhouseNight(; name, C_air, C_mass, G_mass, G_env, Gr, T_ambient, T_sky, T_start)
 

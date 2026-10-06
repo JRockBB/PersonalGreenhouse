@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    DutchBucketSystem(; name, Q_solar_peak, Q_year_amp, t_daylight, daylight_year_amp, beta_transp, baseline_uptake, concentration_set, stock_concentration, crop_nutrient_ratio)
 

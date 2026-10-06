@@ -14,15 +14,8 @@ const MONTH_END = cumsum(MONTH_DAYS)
 const PEAK_SUN_HOURS = [3.4,4.2,5.1,5.8,6.2,6.8,6.7,6.3,5.9,4.7,3.5,3.1]
 const PV_YIELD_PER_KW = PEAK_SUN_HOURS .* MONTH_DAYS .* 0.78
 
-println("Preparing greenhouse model...")
-# Synthesized Denver year, matching GreenhouseAnnualTest rather than the
-# component's winter-design-day defaults.
-@named RAW_GREENHOUSE = PersonalGreenhouse.GreenhouseDiurnal(
-    T_amb_mean=283.15, T_amb_amp=8.0, T_year_amp=12.0, dT_sky=18.0,
-    Q_solar_peak=6500.0, Q_year_amp=2000.0,
-    t_daylight=43200.0, daylight_year_amp=9000.0,
-    T_set_night=288.15, T_set_day=291.15,
-    w_out=0.006, w0=0.006, T_start=288.15)
+println("Preparing geometry-based greenhouse model...")
+@named RAW_GREENHOUSE = PersonalGreenhouse.PortfolioGreenhouseAnnual()
 const SYS = simplify_model(RAW_GREENHOUSE)
 const BASE_PROB = ODEProblem(SYS, [], (0.0, YEAR))
 println("Model ready.")
@@ -34,25 +27,24 @@ function simulate_crop_scenario(req)
     area = clamp(Float64(req["area_m2"]), 1.0, 80.0)
     crop_water = max(Float64(req["crop_water_Lyear"]), 0.0)
     led_estimate = max(Float64(req["led_kwh_year"]), 0.0)
-    reference_area = 12.0
+    reference_area = 21.87
     scale = area/reference_area
 
-    # Envelope dimensions scale approximately with productive floor/canopy area.
-    # Passive mass and air-mass coupling scale with occupied grow area. Crop
-    # transpiration is scaled so its annual water integral matches the planner.
-    reference_crop_water = 7071.0
-    beta = 0.20 * crop_water/reference_crop_water
-    beta = clamp(beta, 0.0, 1.0)
+    # Geometry remains the explicit 6 x 6 m structure. Slider changes scale the
+    # installed crop-group areas inside that fixed envelope. The accepted plan
+    # can also pass explicit greenhouse dimensions/materials.
+    width = clamp(Float64(get(req,"width_m",6.0)),3.0,20.0)
+    length = clamp(Float64(get(req,"length_m",6.0)),3.0,30.0)
+    wall_height = clamp(Float64(get(req,"wall_height_m",2.4)),1.8,6.0)
+    roof_rise = clamp(Float64(get(req,"roof_rise_m",1.2)),0.3,4.0)
 
     prob = remake(BASE_PROB; p=[
-        SYS.A_grow => area,
-        SYS.C_air => 3.84e4*scale,
-        SYS.C_mass => 3.5e6*scale,
-        SYS.G_mass => 50.0*scale,
-        SYS.G_env => 90.0*scale,
-        SYS.Gr => 5.0*scale,
-        SYS.m_dry => 31.6*scale,
-        SYS.beta_transp => beta,
+        SYS.width => width, SYS.length => length,
+        SYS.wall_height => wall_height, SYS.roof_rise => roof_rise,
+        SYS.A_tomato => 6.75*scale,
+        SYS.A_tomatillo => 8.0*scale,
+        SYS.A_pepper => 6.60*scale,
+        SYS.A_cilantro => 0.52*scale,
     ])
 
     sol = solve(prob; saveat=3600.0, abstol=1e-4, reltol=1e-4)
@@ -60,19 +52,20 @@ function simulate_crop_scenario(req)
 
     ts = sol.t
     dt = diff(ts)
-    qheat = [sol(t, idxs=SYS.heater.Q_flow) for t in ts]
-    tamb = [sol(t, idxs=SYS.weather.T_ambient)-273.15 for t in ts]
-    cmd = [sol(t, idxs=SYS.cool_ctrl.y) for t in ts]
-    led = [sol(t, idxs=SYS.growlights.P_elec) for t in ts]
-    water = [sol(t, idxs=SYS.evap.mdot_water) for t in ts]
-    tair = [sol(t, idxs=SYS.air.T)-273.15 for t in ts]
-    rh = [100sol(t, idxs=SYS.moisture.RH) for t in ts]
+    qheat = [sol(t, idxs=SYS.greenhouse.heater.Q_flow) for t in ts]
+    tamb = [sol(t, idxs=SYS.greenhouse.weather.T_ambient)-273.15 for t in ts]
+    cmd = [sol(t, idxs=SYS.greenhouse.cool_ctrl.y) for t in ts]
+    led = [sol(t, idxs=SYS.greenhouse.growlights.P_elec) for t in ts]
+    water = [sol(t, idxs=SYS.greenhouse.evap.mdot_water) for t in ts]
+    tair = [sol(t, idxs=SYS.greenhouse.air.T)-273.15 for t in ts]
+    rh = [100sol(t, idxs=SYS.greenhouse.moisture.RH) for t in ts]
 
     hp = qheat ./ cop.(tamb)
     cooling = [300.0c + (c > 0.01 ? 80.0 : 0.0) for c in cmd]
     # The physical LED block is the primary lighting result. Keep the planner
     # estimate in the response so the user can compare empirical vs physical.
-    hydro_power = fill(9.1, length(ts))
+    # Continuous portfolio Dutch-bucket (9.88 W) plus herb NFT pump (6.8 W).
+    hydro_power = fill(16.68, length(ts))
     total = hp .+ cooling .+ led .+ hydro_power
 
     integrate(x) = sum((x[1:end-1] .+ x[2:end])./2 .* dt)
@@ -99,6 +92,9 @@ function simulate_crop_scenario(req)
 
     Dict(
       "status"=>"ok", "area_m2"=>area, "scale"=>scale,
+      "geometry"=>Dict("width_m"=>width,"length_m"=>length,
+        "wall_height_m"=>wall_height,"roof_rise_m"=>roof_rise,
+        "floor_m2"=>width*length),
       "heat_thermal_kwh"=>round(kwh(qheat),digits=1),
       "heatpump_kwh"=>round(kwh(hp),digits=1),
       "growlight_kwh"=>round(kwh(led),digits=1),

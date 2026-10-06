@@ -4,8 +4,6 @@
 ### Instead, update the Dyad source code and regenerate this file
 
 
-import Moshi as __Ext__Moshi
-
 @doc Markdown.doc"""
    DutchBucketBank(; name, n_emitters, lift, q_emitter_nom_Lph, dp_emitter_nom, q_target_Lph, rho, g, reverse_factor, m_eps)
 
