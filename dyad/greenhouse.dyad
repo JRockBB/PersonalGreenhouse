@@ -226,6 +226,21 @@ component GreenhouseDiurnal
   parameter t_photo_start::Time = 18000.0
   "Photoperiod end [s into day]"
   parameter t_photo_end::Time = 75600.0
+  # ---- Optional imported hourly weather -------------------------------------
+  structural parameter use_tmy::Boolean = false
+  structural parameter ambient_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[283.15,283.15]),
+      independent_var="time_s", dependent_vars=["T_ambient"])
+  structural parameter sky_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[268.15,268.15]),
+      independent_var="time_s", dependent_vars=["T_sky"])
+  structural parameter humidity_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.005,0.005]),
+      independent_var="time_s", dependent_vars=["w_out"])
+  structural parameter solar_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.0,0.0]),
+      independent_var="time_s", dependent_vars=["Q_solar"])
+
   # ---- Weather (site/season) ------------------------------------------------
   parameter T_amb_mean::Temperature = 262.15
   parameter T_amb_amp::Temperature = 7.0
@@ -248,7 +263,9 @@ component GreenhouseDiurnal
   mass_coupling = ThermalComponents.Components.ThermalConductor(G=G_mass)
   envelope = ThermalComponents.Components.ThermalConductor(G=G_env)
   radiation = ThermalComponents.Components.BodyRadiation(Gr=Gr)
-  weather = DiurnalWeather(
+  weather = WeatherSelector(use_tmy=use_tmy,
+    ambient_dataset=ambient_dataset, sky_dataset=sky_dataset,
+    humidity_dataset=humidity_dataset, solar_dataset=solar_dataset,
     T_amb_mean=T_amb_mean, T_amb_amp=T_amb_amp, dT_sky=dT_sky,
     Q_solar_peak=Q_solar_peak, t_daylight=t_daylight,
     T_set_night=T_set_night, T_set_day=T_set_day, w_out_val=w_out,

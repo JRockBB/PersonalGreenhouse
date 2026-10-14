@@ -5,7 +5,7 @@
 
 
 @doc Markdown.doc"""
-   GreenhouseDiurnal(; name, with_humidity_control, C_air, C_mass, G_mass, G_env, Gr, heater_max, k_ctrl, Ti_ctrl, T_cool_set, shade_max, mdot_evap_max, eta_pad, RH_max, k_cool, Ti_cool, P_atm, m_dry, beta_transp, G_infil, w_out, w0, RH_winter_set, RH_dehum_set, mdot_hrv_max, eta_hrv, P_hrv_fan_max, mdot_dehum_max, A_grow, PPFD_set, PPFD_led_max, PPE_led, t_photo_start, t_photo_end, T_amb_mean, T_amb_amp, dT_sky, Q_solar_peak, t_daylight, T_set_night, T_set_day, T_year_amp, Q_year_amp, daylight_year_amp, t_year_peak, T_start)
+   GreenhouseDiurnal(; name, with_humidity_control, use_tmy, ambient_dataset, sky_dataset, humidity_dataset, solar_dataset, C_air, C_mass, G_mass, G_env, Gr, heater_max, k_ctrl, Ti_ctrl, T_cool_set, shade_max, mdot_evap_max, eta_pad, RH_max, k_cool, Ti_cool, P_atm, m_dry, beta_transp, G_infil, w_out, w0, RH_winter_set, RH_dehum_set, mdot_hrv_max, eta_hrv, P_hrv_fan_max, mdot_dehum_max, A_grow, PPFD_set, PPFD_led_max, PPE_led, t_photo_start, t_photo_end, T_amb_mean, T_amb_amp, dT_sky, Q_solar_peak, t_daylight, T_set_night, T_set_day, T_year_amp, Q_year_amp, daylight_year_amp, t_year_peak, T_start)
 
 Greenhouse thermal + moisture model over a diurnal cycle with heating and
 evaporative cooling (increment 4).
@@ -26,6 +26,11 @@ season or site.
 | Name         | Description                         | Units  |   Default value |
 | ------------ | ----------------------------------- | ------ | --------------- |
 | `with_humidity_control`         |                          | --  |   false |
+| `use_tmy`         |                          | --  |   false |
+| `ambient_dataset`         |                          | --  |   DyadData.Dy..._ambient"]) |
+| `sky_dataset`         |                          | --  |   DyadData.Dy...=["T_sky"]) |
+| `humidity_dataset`         |                          | --  |   DyadData.Dy...=["w_out"]) |
+| `solar_dataset`         |                          | --  |   DyadData.Dy..."Q_solar"]) |
 | `C_air`         |                          | J/K  |   3.84e4 |
 | `C_mass`         |                          | J/K  |   3.5e6 |
 | `G_mass`         |                          | W/K  |   50.0 |
@@ -72,7 +77,7 @@ season or site.
 | `t_year_peak`         |                          | s  |   16934400.0 |
 | `T_start`         |                          | K  |   288.15 |
 """
-@component function GreenhouseDiurnal(; name = nothing, with_humidity_control=false, C_air=Float64(38400.0), C_mass=Float64(3500000.0), G_mass=Float64(50.0), G_env=Float64(165.0), Gr=Float64(12.0), heater_max=Float64(15000.0), k_ctrl=Float64(3000.0), Ti_ctrl=Float64(300.0), T_cool_set=300.15, shade_max=0.6, mdot_evap_max=Float64(1.0), eta_pad=0.85, RH_max=0.8, k_cool=Float64(1.0), Ti_cool=Float64(600.0), P_atm=Float64(83000.0), m_dry=31.6, beta_transp=0.2, G_infil=Float64(15.0), w_out=0.006, w0=0.006, RH_winter_set=0.75, RH_dehum_set=0.8, mdot_hrv_max=0.08, eta_hrv=0.8, P_hrv_fan_max=Float64(90.0), mdot_dehum_max=0.00005, A_grow=Float64(12.0), PPFD_set=Float64(380.0), PPFD_led_max=Float64(380.0), PPE_led=2.7, t_photo_start=Float64(18000.0), t_photo_end=Float64(75600.0), T_amb_mean=262.15, T_amb_amp=Float64(7.0), dT_sky=Float64(20.0), Q_solar_peak=Float64(6000.0), t_daylight=Float64(43200.0), T_set_night=288.15, T_set_day=291.15, T_year_amp=Float64(0.0), Q_year_amp=Float64(0.0), daylight_year_amp=Float64(0.0), t_year_peak=Float64(16934400.0), T_start=288.15, kwargs...)
+@component function GreenhouseDiurnal(; name = nothing, with_humidity_control=false, use_tmy=false, ambient_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [283.15, 283.15]); independent_var="time_s", dependent_vars=["T_ambient"]), sky_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [268.15, 268.15]); independent_var="time_s", dependent_vars=["T_sky"]), humidity_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [0.005, 0.005]); independent_var="time_s", dependent_vars=["w_out"]), solar_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [0.0, 0.0]); independent_var="time_s", dependent_vars=["Q_solar"]), C_air=Float64(38400.0), C_mass=Float64(3500000.0), G_mass=Float64(50.0), G_env=Float64(165.0), Gr=Float64(12.0), heater_max=Float64(15000.0), k_ctrl=Float64(3000.0), Ti_ctrl=Float64(300.0), T_cool_set=300.15, shade_max=0.6, mdot_evap_max=Float64(1.0), eta_pad=0.85, RH_max=0.8, k_cool=Float64(1.0), Ti_cool=Float64(600.0), P_atm=Float64(83000.0), m_dry=31.6, beta_transp=0.2, G_infil=Float64(15.0), w_out=0.006, w0=0.006, RH_winter_set=0.75, RH_dehum_set=0.8, mdot_hrv_max=0.08, eta_hrv=0.8, P_hrv_fan_max=Float64(90.0), mdot_dehum_max=0.00005, A_grow=Float64(12.0), PPFD_set=Float64(380.0), PPFD_led_max=Float64(380.0), PPE_led=2.7, t_photo_start=Float64(18000.0), t_photo_end=Float64(75600.0), T_amb_mean=262.15, T_amb_amp=Float64(7.0), dT_sky=Float64(20.0), Q_solar_peak=Float64(6000.0), t_daylight=Float64(43200.0), T_set_night=288.15, T_set_day=291.15, T_year_amp=Float64(0.0), Q_year_amp=Float64(0.0), daylight_year_amp=Float64(0.0), t_year_peak=Float64(16934400.0), T_start=288.15, kwargs...)
   isnothing(name) && throw(ArgumentError("""
     The `name` keyword must be provided. Please consider using the `@named` macro,
     like so:
@@ -266,9 +271,9 @@ season or site.
   # Subcomponent radiation of type ThermalComponents.Components.BodyRadiation
   radiation_overrides = __pop_subcomponent_overrides!(__overrides, "radiation")
   push!(__systems, @named radiation = ThermalComponents.Components.BodyRadiation(; Gr=Gr, radiation_overrides...))
-  # Subcomponent weather of type PersonalGreenhouse.DiurnalWeather
+  # Subcomponent weather of type PersonalGreenhouse.WeatherSelector
   weather_overrides = __pop_subcomponent_overrides!(__overrides, "weather")
-  push!(__systems, @named weather = PersonalGreenhouse.DiurnalWeather(; T_amb_mean=T_amb_mean, T_amb_amp=T_amb_amp, dT_sky=dT_sky, Q_solar_peak=Q_solar_peak, t_daylight=t_daylight, T_set_night=T_set_night, T_set_day=T_set_day, w_out_val=w_out, T_year_amp=T_year_amp, Q_year_amp=Q_year_amp, daylight_year_amp=daylight_year_amp, t_year_peak=t_year_peak, weather_overrides...))
+  push!(__systems, @named weather = PersonalGreenhouse.WeatherSelector(; use_tmy=use_tmy, ambient_dataset=ambient_dataset, sky_dataset=sky_dataset, humidity_dataset=humidity_dataset, solar_dataset=solar_dataset, T_amb_mean=T_amb_mean, T_amb_amp=T_amb_amp, dT_sky=dT_sky, Q_solar_peak=Q_solar_peak, t_daylight=t_daylight, T_set_night=T_set_night, T_set_day=T_set_day, w_out_val=w_out, T_year_amp=T_year_amp, Q_year_amp=Q_year_amp, daylight_year_amp=daylight_year_amp, t_year_peak=t_year_peak, weather_overrides...))
   # Subcomponent ambient of type ThermalComponents.Sources.PrescribedTemperature
   ambient_overrides = __pop_subcomponent_overrides!(__overrides, "ambient")
   push!(__systems, @named ambient = ThermalComponents.Sources.PrescribedTemperature(; ambient_overrides...))

@@ -187,14 +187,34 @@ The synthesized-year solve completed with the following default-portfolio result
 | Supplemental LED electricity | 6,877 kWh |
 | Evaporative-cooling electricity | 242 kWh |
 | Both hydroponic pumps | 146 kWh |
-| **Total modeled electricity** | **12,360 kWh/year** |
-| Evaporative-cooling water | 7,022 L/year |
-| Peak heating demand | 9.02 kW thermal |
-| Controlled temperature range | 14.76–27.01 °C |
-| Preliminary grid-tied PV | 8.4 kW |
-| Preliminary off-grid PV / battery | 22.6 kW / 112 kWh |
+| Humidity control | 48 kWh |
+| **Total modeled electricity** | **12,437 kWh/year** |
+| Evaporative-cooling water | 7,043 L/year |
+| Peak heating demand | 8.95 kW thermal |
+| Controlled temperature range | 14.72–27.01 °C |
+| Preliminary grid-tied PV | 8.5 kW |
+| Preliminary off-grid PV / battery | 22.8 kW / 114 kWh |
 
-These values supersede the earlier 12 m² headline estimate. Grow lighting is now the largest electrical load because the accepted portfolio nearly doubles active canopy. The maximum modeled winter RH remains near saturation, reinforcing the need for condensation management or heat-recovery dehumidification in detailed design.
+These values supersede the earlier 12 m² headline estimate. Grow lighting is the largest electrical load because the accepted portfolio nearly doubles active canopy.
+
+
+### 3.6 Winter humidity and condensation management
+
+The annual model now includes an 80%-effective sensible HRV controlled to 75% RH, with an 80% backup-dehumidifier threshold. A glazing-surface model calculates interior surface temperature, dew point and condensate.
+
+| Humidity-control result | Value |
+|---|---:|
+| Annual maximum RH | 79.53% |
+| HRV maximum dry-air flow | 0.08 kg/s (about 240 m³/h) |
+| HRV sensible effectiveness | 80% |
+| Humidity-control electricity | 48.2 kWh/year |
+| Backup dehumidifier condensate | negligible in synthesized year |
+| Glazing-condensation duration | 52 hours/year |
+| Glazing condensate | 1.28 kg/year |
+| Minimum surface/dew-point margin | -0.34 K |
+
+The controller reduces the prior saturation problem to a small residual glazing-condensation risk. The annual electricity becomes **12,437 kWh**, with preliminary sizing of **8.5 kW grid-tied PV**, or **22.8 kW off-grid PV plus 114 kWh battery**. Residual condensation should be handled by glazing gutters/drainage and leaf-wetness alarms; detailed HRV frost protection awaits manufacturer data and measured weather.
+
 
 
 ---

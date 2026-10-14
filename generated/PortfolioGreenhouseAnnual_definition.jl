@@ -5,7 +5,7 @@
 
 
 @doc Markdown.doc"""
-   PortfolioGreenhouseAnnual(; name, width, length, wall_height, roof_rise, U_glazing, U_north, ACH, rho_air, cp_air, emissivity, wall_sky_fraction, curtain_ir_factor, solar_utilization, irradiance_peak, A_tomato, A_tomatillo, A_pepper, A_cilantro, occupancy_tomato, occupancy_tomatillo, occupancy_pepper, occupancy_cilantro, PPFD_tomato, PPFD_tomatillo, PPFD_pepper, PPFD_cilantro, beta_tomato, beta_tomatillo, beta_pepper, beta_cilantro, air_capacity_factor, mass_capacity_per_area, mass_coupling_per_area, heater_max, mdot_evap_max, T_start)
+   PortfolioGreenhouseAnnual(; name, use_tmy, ambient_dataset, sky_dataset, humidity_dataset, solar_dataset, width, length, wall_height, roof_rise, U_glazing, U_north, ACH, rho_air, cp_air, emissivity, wall_sky_fraction, curtain_ir_factor, solar_utilization, irradiance_peak, A_tomato, A_tomatillo, A_pepper, A_cilantro, occupancy_tomato, occupancy_tomatillo, occupancy_pepper, occupancy_cilantro, PPFD_tomato, PPFD_tomatillo, PPFD_pepper, PPFD_cilantro, beta_tomato, beta_tomatillo, beta_pepper, beta_cilantro, air_capacity_factor, mass_capacity_per_area, mass_coupling_per_area, heater_max, mdot_evap_max, T_start)
 
 Geometry- and crop-specific annual greenhouse model for the default portfolio.
 
@@ -17,6 +17,11 @@ passes those values into the validated thermal/moisture/control model.
 
 | Name         | Description                         | Units  |   Default value |
 | ------------ | ----------------------------------- | ------ | --------------- |
+| `use_tmy`         |                          | --  |   false |
+| `ambient_dataset`         |                          | --  |   DyadData.Dy..._ambient"]) |
+| `sky_dataset`         |                          | --  |   DyadData.Dy...=["T_sky"]) |
+| `humidity_dataset`         |                          | --  |   DyadData.Dy...=["w_out"]) |
+| `solar_dataset`         |                          | --  |   DyadData.Dy..."Q_solar"]) |
 | `width`         |                          | m  |   6.0 |
 | `length`         |                          | m  |   6.0 |
 | `wall_height`         |                          | m  |   2.4 |
@@ -54,7 +59,7 @@ passes those values into the validated thermal/moisture/control model.
 | `mdot_evap_max`         |                          | --  |   1.5 |
 | `T_start`         |                          | K  |   288.15 |
 """
-@component function PortfolioGreenhouseAnnual(; name = nothing, width=Float64(6.0), length=Float64(6.0), wall_height=2.4, roof_rise=1.2, U_glazing=1.8, U_north=0.35, ACH=0.35, rho_air=Float64(1.0), cp_air=Float64(1006.0), emissivity=0.85, wall_sky_fraction=0.25, curtain_ir_factor=0.4, solar_utilization=0.3575, irradiance_peak=Float64(700.0), A_tomato=6.75, A_tomatillo=Float64(8.0), A_pepper=6.6, A_cilantro=0.52, occupancy_tomato=0.9, occupancy_tomatillo=0.9, occupancy_pepper=0.9, occupancy_cilantro=0.93, PPFD_tomato=Float64(400.0), PPFD_tomatillo=Float64(380.0), PPFD_pepper=Float64(400.0), PPFD_cilantro=Float64(250.0), beta_tomato=0.24, beta_tomatillo=0.21, beta_pepper=0.2, beta_cilantro=0.1, air_capacity_factor=Float64(1.0), mass_capacity_per_area=Float64(100000.0), mass_coupling_per_area=Float64(2.0), heater_max=Float64(15000.0), mdot_evap_max=1.5, T_start=288.15, kwargs...)
+@component function PortfolioGreenhouseAnnual(; name = nothing, use_tmy=false, ambient_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [283.15, 283.15]); independent_var="time_s", dependent_vars=["T_ambient"]), sky_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [268.15, 268.15]); independent_var="time_s", dependent_vars=["T_sky"]), humidity_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [0.005, 0.005]); independent_var="time_s", dependent_vars=["w_out"]), solar_dataset=DyadData.DyadTimeseries(hcat([0.0, 31532400.0], [0.0, 0.0]); independent_var="time_s", dependent_vars=["Q_solar"]), width=Float64(6.0), length=Float64(6.0), wall_height=2.4, roof_rise=1.2, U_glazing=1.8, U_north=0.35, ACH=0.35, rho_air=Float64(1.0), cp_air=Float64(1006.0), emissivity=0.85, wall_sky_fraction=0.25, curtain_ir_factor=0.4, solar_utilization=0.3575, irradiance_peak=Float64(700.0), A_tomato=6.75, A_tomatillo=Float64(8.0), A_pepper=6.6, A_cilantro=0.52, occupancy_tomato=0.9, occupancy_tomatillo=0.9, occupancy_pepper=0.9, occupancy_cilantro=0.93, PPFD_tomato=Float64(400.0), PPFD_tomatillo=Float64(380.0), PPFD_pepper=Float64(400.0), PPFD_cilantro=Float64(250.0), beta_tomato=0.24, beta_tomatillo=0.21, beta_pepper=0.2, beta_cilantro=0.1, air_capacity_factor=Float64(1.0), mass_capacity_per_area=Float64(100000.0), mass_coupling_per_area=Float64(2.0), heater_max=Float64(15000.0), mdot_evap_max=1.5, T_start=288.15, kwargs...)
   isnothing(name) && throw(ArgumentError("""
     The `name` keyword must be provided. Please consider using the `@named` macro,
     like so:

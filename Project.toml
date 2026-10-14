@@ -1,12 +1,11 @@
 name = "PersonalGreenhouse"
 uuid = "39e8ca83-b863-4c22-a7b7-3e4491179ee1"
 version = "0.1.0"
-authors = [
-  " <>"
-]
+authors = [" <>"]
 
 [deps]
 BlockComponents = "1ef5d832-be8e-447f-9f2c-8b5d17d15fd3"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DyadData = "cab12561-e36c-4498-ae70-c9a5e79fef2a"
 DyadInterface = "99806f68-afab-45ca-9d8c-ceff6bc61f54"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
@@ -25,6 +24,7 @@ TranslationalComponents = "42acc370-819b-4877-bdd6-eb3294461f5d"
 
 [compat]
 BlockComponents = "=4.6.0"
+CSV = "0.10.17"
 DyadData = "2.0.1"
 HTTP = "1.11.0"
 HydraulicComponents = "=2.0.4"
@@ -46,10 +46,4 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = [
-  "DyadEcosystemDependencies",
-  "CSV",
-  "DataFrames",
-  "Plots",
-  "Test"
-]
+test = ["DyadEcosystemDependencies", "CSV", "DataFrames", "Plots", "Test"]

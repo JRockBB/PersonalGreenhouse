@@ -124,6 +124,12 @@
   </section>
 
   <section>
+    <h2>Winter humidity &amp; condensation control</h2>
+    <div class="note">Sensible-recovery ventilation maintains the normal RH target; backup condensing dehumidification is available above the hard ceiling. Glazing condensation is now calculated from interior surface temperature and dew point.</div>
+    <div class="cards" id="humidityCards"></div>
+  </section>
+
+  <section>
     <h2>Design-day performance</h2>
     <div class="controls">
       <span class="pill">design day</span>
@@ -237,6 +243,7 @@ const ax  = (extra)=>Object.assign(A(), extra||{});
     ['Hydroponic electricity', s.hydro.toLocaleString(), 'kWh / yr'],
     ['Heat pump electricity', s.hp.toLocaleString(), 'kWh / yr'],
     ['Cooling electricity', s.cool.toLocaleString(), 'kWh / yr'],
+    ['Humidity control', s.humidity.toLocaleString(), 'kWh / yr'],
     ['Water use', s.water.toLocaleString(), 'L / yr'],
     ['Grid-tied PV', s.pv_grid, 'kW (net-zero)'],
     ['Off-grid PV + battery', s.pv_off+' kW', s.batt+' kWh battery'],
@@ -293,6 +300,24 @@ const ax  = (extra)=>Object.assign(A(), extra||{});
   document.getElementById('controlsCards').innerHTML=cards.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
 })();
 
+// ---- winter humidity / condensation summary ----
+(function(){
+  const h=D.humidityControl;
+  const cards=[
+    ['Normal RH target',h.RH_set_pct,'%'],
+    ['Hard RH ceiling',h.RH_ceiling_pct,'%'],
+    ['Annual maximum RH',h.RH_max_sim_pct,'%'],
+    ['Maximum HRV flow',h.hrv_max_kg_s,'kg/s dry air'],
+    ['Heat recovery',h.hrv_sensible_eff_pct,'% sensible'],
+    ['Control electricity',h.annual_electric_kwh,'kWh / yr'],
+    ['Glazing condensate',h.glazing_condensate_kg_year,'kg / yr'],
+    ['Condensing duration',h.condensation_hours,'hours / yr'],
+    ['Minimum dew margin',h.minimum_dewpoint_margin_K,'K'],
+  ];
+  document.getElementById('humidityCards').innerHTML=cards.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+})();
+
+
 // ---- sizing table ----
 (function(){
   const b=D.summary.baseline, s=D.summary.improved;
@@ -302,6 +327,7 @@ const ax  = (extra)=>Object.assign(A(), extra||{});
     ['Annual grow-light electricity', b.led.toLocaleString(), s.led.toLocaleString(), 'kWh'],
     ['Annual hydroponic electricity', b.hydro.toLocaleString(), s.hydro.toLocaleString(), 'kWh'],
     ['Annual cooling electricity', b.cool, s.cool, 'kWh'],
+    ['Annual humidity-control electricity', b.humidity || 0, s.humidity, 'kWh'],
     ['Total annual electricity', b.total.toLocaleString(), s.total.toLocaleString(), 'kWh'],
     ['Annual water', b.water.toLocaleString(), s.water.toLocaleString(), 'L'],
     ['Grid-tied PV (net-zero)', b.pv_grid, s.pv_grid, 'kW'],
@@ -357,6 +383,7 @@ function renderMonthly(){
     {type:'bar', name:'Dutch-bucket pump', x:D.months, y:md.hydro, marker:{color:'#9b7ede'}},
     {type:'bar', name:'Herb NFT pump', x:D.months, y:md.nft_hydro, marker:{color:'#7cc6a5'}},
     {type:'bar', name:'Cooling (fan + pump elec)', x:D.months, y:md.cool, marker:{color:'#3ea6ff'}},
+    {type:'bar', name:'Humidity control', x:D.months, y:md.humidity || D.months.map(()=>0), marker:{color:'#67d5b5'}},
   ], Object.assign({}, LAY, {barmode:'stack',
      yaxis:ax({title:'electricity (kWh / month)', rangemode:'tozero'}),
      xaxis:ax()}), CFG);
@@ -444,7 +471,7 @@ Plotly.newPlot('envChart', [
       const response=await fetch('/api/recompute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentCropPlan)});
       const result=await response.json();if(!response.ok||result.status!=='ok')throw new Error(result.message||`server returned ${response.status}`);
       status.textContent=`Completed in ${((performance.now()-t0)/1000).toFixed(1)} s`;
-      const items=[['Simulated geometry',result.geometry.width_m+' × '+result.geometry.length_m,'m footprint'],['Total electricity',result.total_kwh.toLocaleString(),'kWh / yr'],['Heat-pump electricity',result.heatpump_kwh.toLocaleString(),'kWh / yr'],['Grow lights',result.growlight_kwh.toLocaleString(),'kWh / yr'],['Cooling electricity',result.cooling_kwh.toLocaleString(),'kWh / yr'],['Process water',result.total_process_water_L.toLocaleString(),'L / yr'],['Peak air',result.peak_air_C,'°C'],['Maximum RH',result.max_rh_pct,'%'],['Grid-tied PV',result.pv_grid_kw,'kW'],['Off-grid PV + battery',result.pv_off_kw+' kW',result.battery_kwh+' kWh battery']];
+      const items=[['Simulated geometry',result.geometry.width_m+' × '+result.geometry.length_m,'m footprint'],['Total electricity',result.total_kwh.toLocaleString(),'kWh / yr'],['Heat-pump electricity',result.heatpump_kwh.toLocaleString(),'kWh / yr'],['Grow lights',result.growlight_kwh.toLocaleString(),'kWh / yr'],['Cooling electricity',result.cooling_kwh.toLocaleString(),'kWh / yr'],['Humidity control',result.humidity_kwh.toLocaleString(),'kWh / yr'],['Process water',result.total_process_water_L.toLocaleString(),'L / yr'],['Peak air',result.peak_air_C,'°C'],['Maximum RH',result.max_rh_pct,'%'],['Grid-tied PV',result.pv_grid_kw,'kW'],['Off-grid PV + battery',result.pv_off_kw+' kW',result.battery_kwh+' kWh battery']];
       cards.innerHTML=items.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
     }catch(err){status.textContent=`Could not re-simulate: ${err.message}. Start dashboard/server.jl and open http://127.0.0.1:8080.`;status.style.color='#ffb454';}
     finally{button.disabled=false;button.style.opacity='1';}

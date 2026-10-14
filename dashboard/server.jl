@@ -59,6 +59,7 @@ function simulate_crop_scenario(req)
     water = [sol(t, idxs=SYS.greenhouse.evap.mdot_water) for t in ts]
     tair = [sol(t, idxs=SYS.greenhouse.air.T)-273.15 for t in ts]
     rh = [100sol(t, idxs=SYS.greenhouse.moisture.RH) for t in ts]
+    humidity_power = [sol(t, idxs=SYS.greenhouse.humidity.P_elec) for t in ts]
 
     hp = qheat ./ cop.(tamb)
     cooling = [300.0c + (c > 0.01 ? 80.0 : 0.0) for c in cmd]
@@ -66,11 +67,12 @@ function simulate_crop_scenario(req)
     # estimate in the response so the user can compare empirical vs physical.
     # Continuous portfolio Dutch-bucket (9.88 W) plus herb NFT pump (6.8 W).
     hydro_power = fill(16.68, length(ts))
-    total = hp .+ cooling .+ led .+ hydro_power
+    total = hp .+ cooling .+ led .+ humidity_power .+ hydro_power
 
     integrate(x) = sum((x[1:end-1] .+ x[2:end])./2 .* dt)
     kwh(x) = integrate(x)/3.6e6
-    monthly_hp = zeros(12); monthly_cool = zeros(12); monthly_led = zeros(12); monthly_hydro=zeros(12)
+    monthly_hp=zeros(12); monthly_cool=zeros(12); monthly_led=zeros(12)
+    monthly_humidity=zeros(12); monthly_hydro=zeros(12)
     day_load = zeros(365)
     for i in eachindex(dt)
         tm = (ts[i]+ts[i+1])/2
@@ -79,11 +81,12 @@ function simulate_crop_scenario(req)
         monthly_hp[mo] += (hp[i]+hp[i+1])/2*f
         monthly_cool[mo] += (cooling[i]+cooling[i+1])/2*f
         monthly_led[mo] += (led[i]+led[i+1])/2*f
+        monthly_humidity[mo] += (humidity_power[i]+humidity_power[i+1])/2*f
         monthly_hydro[mo] += (hydro_power[i]+hydro_power[i+1])/2*f
         dy = min(365, floor(Int,ts[i]/86400)+1)
         day_load[dy] += (total[i]+total[i+1])/2*f
     end
-    monthly_total = monthly_hp.+monthly_cool.+monthly_led.+monthly_hydro
+    monthly_total = monthly_hp.+monthly_cool.+monthly_led.+monthly_humidity.+monthly_hydro
     annual_elec = sum(monthly_total)
     pv_grid = annual_elec/sum(PV_YIELD_PER_KW)
     pv_off = maximum(monthly_total./PV_YIELD_PER_KW)
@@ -100,6 +103,7 @@ function simulate_crop_scenario(req)
       "growlight_kwh"=>round(kwh(led),digits=1),
       "planner_growlight_kwh"=>round(led_estimate,digits=1),
       "cooling_kwh"=>round(kwh(cooling),digits=1),
+      "humidity_kwh"=>round(kwh(humidity_power),digits=1),
       "hydro_kwh"=>round(kwh(hydro_power),digits=1),
       "total_kwh"=>round(annual_elec,digits=1),
       "evap_water_L"=>round(integrate(water),digits=0),
@@ -111,7 +115,8 @@ function simulate_crop_scenario(req)
       "pv_grid_kw"=>round(pv_grid,digits=1),
       "pv_off_kw"=>round(pv_off,digits=1),
       "battery_kwh"=>round(battery,digits=0),
-      "monthly"=>Dict("hp"=>monthly_hp,"cool"=>monthly_cool,"led"=>monthly_led,"hydro"=>monthly_hydro)
+      "monthly"=>Dict("hp"=>monthly_hp,"cool"=>monthly_cool,
+        "led"=>monthly_led,"humidity"=>monthly_humidity,"hydro"=>monthly_hydro)
     )
 end
 
@@ -142,8 +147,10 @@ function handler(req)
     HTTP.Response(200,["Content-Type"=>mime(path)],read(path))
 end
 
-host = get(ENV,"GREENHOUSE_HOST","127.0.0.1")
-port = parse(Int,get(ENV,"GREENHOUSE_PORT","8080"))
-println("Dashboard: http://$host:$port")
-println("Use Ctrl+C to stop.")
-HTTP.serve(handler,host,port)
+if abspath(PROGRAM_FILE) == @__FILE__
+    host = get(ENV,"GREENHOUSE_HOST","127.0.0.1")
+    port = parse(Int,get(ENV,"GREENHOUSE_PORT","8080"))
+    println("Dashboard: http://$host:$port")
+    println("Use Ctrl+C to stop.")
+    HTTP.serve(handler,host,port)
+end

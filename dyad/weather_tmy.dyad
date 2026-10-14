@@ -1,0 +1,124 @@
+"""
+Hourly measured-weather driver for EPW/TMY-style data.
+
+Each signal is supplied as a `DyadTimeseries`, allowing an imported weather file
+to drive the existing greenhouse climate model. Linear interpolation and
+periodic extrapolation wrap the 8760-hour dataset into a repeatable typical
+year. Dataset values use SI units: temperature [K], humidity ratio [kg/kg], and
+effective transmitted solar gain [W].
+"""
+component TMYWeather
+  structural parameter ambient_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[283.15,283.15]),
+      independent_var="time_s", dependent_vars=["T_ambient"])
+  structural parameter sky_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[268.15,268.15]),
+      independent_var="time_s", dependent_vars=["T_sky"])
+  structural parameter humidity_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.005,0.005]),
+      independent_var="time_s", dependent_vars=["w_out"])
+  structural parameter solar_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.0,0.0]),
+      independent_var="time_s", dependent_vars=["Q_solar"])
+  parameter T_set_night::Temperature = 288.15
+  parameter T_set_day::Temperature = 291.15
+  parameter day_threshold::Real = 50.0
+
+  T_ambient = RealOutput()
+  T_sky = RealOutput()
+  w_out = RealOutput()
+  Q_solar = RealOutput()
+  T_setpoint = RealOutput()
+
+  ambient_interp = BlockComponents.Tables.Interpolation(
+    interpolation_type=BlockComponents.InterpolationType.LinearInterpolation(),
+    extrapolation_type=BlockComponents.ExtrapolationType.Periodic(),
+    dataset=ambient_dataset)
+  sky_interp = BlockComponents.Tables.Interpolation(
+    interpolation_type=BlockComponents.InterpolationType.LinearInterpolation(),
+    extrapolation_type=BlockComponents.ExtrapolationType.Periodic(),
+    dataset=sky_dataset)
+  humidity_interp = BlockComponents.Tables.Interpolation(
+    interpolation_type=BlockComponents.InterpolationType.LinearInterpolation(),
+    extrapolation_type=BlockComponents.ExtrapolationType.Periodic(),
+    dataset=humidity_dataset)
+  solar_interp = BlockComponents.Tables.Interpolation(
+    interpolation_type=BlockComponents.InterpolationType.LinearInterpolation(),
+    extrapolation_type=BlockComponents.ExtrapolationType.Periodic(),
+    dataset=solar_dataset)
+relations
+  ambient_interp.u = time
+  sky_interp.u = time
+  humidity_interp.u = time
+  solar_interp.u = time
+  T_ambient = ambient_interp.y
+  T_sky = sky_interp.y
+  w_out = humidity_interp.y
+  Q_solar = solar_interp.y
+  T_setpoint = ifelse(Q_solar > day_threshold, T_set_day, T_set_night)
+end
+
+"""
+Common weather interface selecting either analytical design weather or imported
+TMY data. The greenhouse model connects to this component once; switching
+weather source is a structural parameter and does not duplicate climate physics.
+"""
+component WeatherSelector
+  structural parameter use_tmy::Boolean = false
+  structural parameter ambient_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[283.15,283.15]),
+      independent_var="time_s", dependent_vars=["T_ambient"])
+  structural parameter sky_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[268.15,268.15]),
+      independent_var="time_s", dependent_vars=["T_sky"])
+  structural parameter humidity_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.005,0.005]),
+      independent_var="time_s", dependent_vars=["w_out"])
+  structural parameter solar_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.0,0.0]),
+      independent_var="time_s", dependent_vars=["Q_solar"])
+
+  # Analytical-weather parameters
+  parameter T_amb_mean::Temperature = 262.15
+  parameter T_amb_amp::Temperature = 7.0
+  parameter dT_sky::Real = 20.0
+  parameter Q_solar_peak::Real = 6000.0
+  parameter t_daylight::Time = 43200.0
+  parameter T_set_night::Temperature = 288.15
+  parameter T_set_day::Temperature = 291.15
+  parameter w_out_val::Real = 0.006
+  parameter T_year_amp::Temperature = 0.0
+  parameter Q_year_amp::Real = 0.0
+  parameter daylight_year_amp::Time = 0.0
+  parameter t_year_peak::Time = 16934400.0
+
+  T_ambient = RealOutput()
+  T_sky = RealOutput()
+  Q_solar = RealOutput()
+  T_setpoint = RealOutput()
+  w_out = RealOutput()
+
+  analytical = DiurnalWeather(T_amb_mean=T_amb_mean, T_amb_amp=T_amb_amp,
+    dT_sky=dT_sky, Q_solar_peak=Q_solar_peak, t_daylight=t_daylight,
+    T_set_night=T_set_night, T_set_day=T_set_day, w_out_val=w_out_val,
+    T_year_amp=T_year_amp, Q_year_amp=Q_year_amp,
+    daylight_year_amp=daylight_year_amp, t_year_peak=t_year_peak) if !use_tmy
+  measured = TMYWeather(ambient_dataset=ambient_dataset,
+    sky_dataset=sky_dataset, humidity_dataset=humidity_dataset,
+    solar_dataset=solar_dataset, T_set_night=T_set_night,
+    T_set_day=T_set_day) if use_tmy
+relations
+  if use_tmy
+    connect(measured.T_ambient, T_ambient)
+    connect(measured.T_sky, T_sky)
+    connect(measured.Q_solar, Q_solar)
+    connect(measured.T_setpoint, T_setpoint)
+    connect(measured.w_out, w_out)
+  else
+    connect(analytical.T_ambient, T_ambient)
+    connect(analytical.T_sky, T_sky)
+    connect(analytical.Q_solar, Q_solar)
+    connect(analytical.T_setpoint, T_setpoint)
+    connect(analytical.w_out, w_out)
+  end
+end

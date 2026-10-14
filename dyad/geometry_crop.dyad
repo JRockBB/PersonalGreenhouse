@@ -119,6 +119,21 @@ component PortfolioGreenhouseAnnual
   parameter curtain_ir_factor::Real = 0.40
   parameter solar_utilization::Real = 0.3575
   parameter irradiance_peak::Real = 700.0
+  # Optional imported hourly weather datasets
+  structural parameter use_tmy::Boolean = false
+  structural parameter ambient_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[283.15,283.15]),
+      independent_var="time_s", dependent_vars=["T_ambient"])
+  structural parameter sky_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[268.15,268.15]),
+      independent_var="time_s", dependent_vars=["T_sky"])
+  structural parameter humidity_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.005,0.005]),
+      independent_var="time_s", dependent_vars=["w_out"])
+  structural parameter solar_dataset::DyadData.DyadTimeseries =
+    DyadData.DyadTimeseries(hcat([0.0,31532400.0],[0.0,0.0]),
+      independent_var="time_s", dependent_vars=["Q_solar"])
+
   # Crop-group areas and occupancy
   parameter A_tomato::Area = 6.75
   parameter A_tomatillo::Area = 8.0
@@ -165,6 +180,9 @@ component PortfolioGreenhouseAnnual
   parameter T_start::Temperature = 288.15
 
   greenhouse = GreenhouseDiurnal(
+    use_tmy=use_tmy, ambient_dataset=ambient_dataset,
+    sky_dataset=sky_dataset, humidity_dataset=humidity_dataset,
+    solar_dataset=solar_dataset,
     C_air=rho_air*cp_air*volume*air_capacity_factor,
     C_mass=mass_capacity_per_area*A_floor,
     G_mass=mass_coupling_per_area*A_floor,
