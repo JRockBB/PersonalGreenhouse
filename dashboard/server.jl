@@ -13,12 +13,28 @@ const MONTH_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31]
 const MONTH_END = cumsum(MONTH_DAYS)
 const PEAK_SUN_HOURS = [3.4,4.2,5.1,5.8,6.2,6.8,6.7,6.3,5.9,4.7,3.5,3.1]
 const PV_YIELD_PER_KW = PEAK_SUN_HOURS .* MONTH_DAYS .* 0.78
+const WEATHER_PATH = get(ENV,"GREENHOUSE_WEATHER","")
 
 println("Preparing geometry-based greenhouse model...")
-@named RAW_GREENHOUSE = PersonalGreenhouse.PortfolioGreenhouseAnnual()
+const WEATHER_INFO = if isempty(WEATHER_PATH)
+    nothing
+else
+    println("Loading weather file: $WEATHER_PATH")
+    PersonalGreenhouse.weather_datasets(
+        PersonalGreenhouse.load_weather_file(WEATHER_PATH);
+        floor_area=36.0, solar_utilization=0.3575)
+end
+@named RAW_GREENHOUSE = isnothing(WEATHER_INFO) ?
+    PersonalGreenhouse.PortfolioGreenhouseAnnual() :
+    PersonalGreenhouse.PortfolioGreenhouseAnnual(use_tmy=true,
+        ambient_dataset=WEATHER_INFO.ambient,
+        sky_dataset=WEATHER_INFO.sky,
+        humidity_dataset=WEATHER_INFO.humidity,
+        solar_dataset=WEATHER_INFO.solar)
 const SYS = simplify_model(RAW_GREENHOUSE)
 const BASE_PROB = ODEProblem(SYS, [], (0.0, YEAR))
-println("Model ready.")
+println(isnothing(WEATHER_INFO) ? "Model ready (synthesized weather)." :
+    "Model ready ($(WEATHER_INFO.source)).")
 
 cop(Tc) = clamp(2.8 + 0.06Tc, 1.8, 4.0)
 monthof(t) = (d = floor(Int, t/86400) % 365; findfirst(x -> d < x, MONTH_END))
@@ -95,6 +111,8 @@ function simulate_crop_scenario(req)
 
     Dict(
       "status"=>"ok", "area_m2"=>area, "scale"=>scale,
+      "weather_source"=>(isnothing(WEATHER_INFO) ? "Synthesized Denver year" : WEATHER_INFO.source),
+      "weather_summary"=>(isnothing(WEATHER_INFO) ? nothing : WEATHER_INFO.summary),
       "geometry"=>Dict("width_m"=>width,"length_m"=>length,
         "wall_height_m"=>wall_height,"roof_rise_m"=>roof_rise,
         "floor_m2"=>width*length),

@@ -217,6 +217,21 @@ The controller reduces the prior saturation problem to a small residual glazing-
 
 
 
+### 3.7 EPW/TMY weather import
+
+The model now accepts an EnergyPlus EPW file or a simple 8760-row hourly CSV as the annual weather driver. The import path reads dry-bulb temperature, relative humidity, atmospheric pressure, global horizontal irradiance, and wind speed; it converts RH to humidity ratio and GHI to effective greenhouse solar gain. Linear hourly interpolation and periodic annual extrapolation drive the same greenhouse thermal/moisture/control model used by the synthesized-year scenario.
+
+To run a local TMY/EPW file:
+
+1. Obtain an EPW or TMY CSV for Denver (or another future location).
+2. Double-click `dashboard/start_dashboard_with_weather.bat`.
+3. Paste the full weather-file path.
+4. Open `http://127.0.0.1:8080` and press the recompute button.
+
+Supported CSV aliases are documented in `dyad/module.jl`; required fields are dry-bulb temperature, relative humidity, and GHI. The server response and dashboard identify whether the result used synthesized or imported weather. Direct NREL download was not possible from the modeling environment because external DNS access was unavailable, so no unverified weather file was embedded in the project.
+
+
+
 ---
 
 ## 4. Hydroponic system

@@ -66,6 +66,14 @@
     <div class="cards" id="cards"></div>
   </section>
 
+
+  <section>
+    <h2>Weather source</h2>
+    <div class="note">The default headline uses synthesized Denver weather. The same physical model can run an official EPW or 8760-row TMY CSV through the alternate launcher.</div>
+    <div class="cards" id="weatherCards"></div>
+    <div class="hint" style="margin-top:12px">For measured weather, close the current server and run <code>dashboard\start_dashboard_with_weather.bat</code>, then paste the EPW/CSV path. The recompute result reports the active source.</div>
+  </section>
+
   <section>
     <h2>System sizing — grid-tied vs off-grid</h2>
     <div class="note">Heat pump COP varies with outdoor temperature (≈1.8 cold snap → 3.7 mild). PV yield from Denver monthly peak-sun-hours, 78% derate. Battery = 1.5× worst-day electrical at 80% depth-of-discharge.</div>
@@ -251,6 +259,18 @@ const ax  = (extra)=>Object.assign(A(), extra||{});
   ];
   document.getElementById('cards').innerHTML = cards.map(c=>
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
+})();
+
+// ---- weather-source capability ----
+(function(){
+  const w=D.weatherImport;
+  const cards=[
+    ['Default source',w.default_source,'current static headline'],
+    ['EPW import',w.epw_supported?'Ready':'Unavailable',w.hourly_rows+' hourly rows'],
+    ['TMY CSV import',w.csv_supported?'Ready':'Unavailable','temperature + RH + GHI'],
+    ['Validation',w.validated?'Passed':'Pending','full annual physical solve'],
+  ];
+  document.getElementById('weatherCards').innerHTML=cards.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
 })();
 
 // ---- hydroponic summary ----
@@ -471,7 +491,7 @@ Plotly.newPlot('envChart', [
       const response=await fetch('/api/recompute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.currentCropPlan)});
       const result=await response.json();if(!response.ok||result.status!=='ok')throw new Error(result.message||`server returned ${response.status}`);
       status.textContent=`Completed in ${((performance.now()-t0)/1000).toFixed(1)} s`;
-      const items=[['Simulated geometry',result.geometry.width_m+' × '+result.geometry.length_m,'m footprint'],['Total electricity',result.total_kwh.toLocaleString(),'kWh / yr'],['Heat-pump electricity',result.heatpump_kwh.toLocaleString(),'kWh / yr'],['Grow lights',result.growlight_kwh.toLocaleString(),'kWh / yr'],['Cooling electricity',result.cooling_kwh.toLocaleString(),'kWh / yr'],['Humidity control',result.humidity_kwh.toLocaleString(),'kWh / yr'],['Process water',result.total_process_water_L.toLocaleString(),'L / yr'],['Peak air',result.peak_air_C,'°C'],['Maximum RH',result.max_rh_pct,'%'],['Grid-tied PV',result.pv_grid_kw,'kW'],['Off-grid PV + battery',result.pv_off_kw+' kW',result.battery_kwh+' kWh battery']];
+      const items=[['Weather source',result.weather_source,'annual driver'],['Simulated geometry',result.geometry.width_m+' × '+result.geometry.length_m,'m footprint'],['Total electricity',result.total_kwh.toLocaleString(),'kWh / yr'],['Heat-pump electricity',result.heatpump_kwh.toLocaleString(),'kWh / yr'],['Grow lights',result.growlight_kwh.toLocaleString(),'kWh / yr'],['Cooling electricity',result.cooling_kwh.toLocaleString(),'kWh / yr'],['Humidity control',result.humidity_kwh.toLocaleString(),'kWh / yr'],['Process water',result.total_process_water_L.toLocaleString(),'L / yr'],['Peak air',result.peak_air_C,'°C'],['Maximum RH',result.max_rh_pct,'%'],['Grid-tied PV',result.pv_grid_kw,'kW'],['Off-grid PV + battery',result.pv_off_kw+' kW',result.battery_kwh+' kWh battery']];
       cards.innerHTML=items.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="u">${c[2]}</div></div>`).join('');
     }catch(err){status.textContent=`Could not re-simulate: ${err.message}. Start dashboard/server.jl and open http://127.0.0.1:8080.`;status.style.color='#ffb454';}
     finally{button.disabled=false;button.style.opacity='1';}
